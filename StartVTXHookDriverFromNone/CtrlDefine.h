@@ -1,0 +1,28 @@
+#ifndef CTRL_DEFINE_H
+#define CTRL_DEFINE_H
+
+#ifndef CTL_CODE
+#define CTL_CODE( DeviceType, Function, Method, Access ) (                 \
+    ((DeviceType) << 16) | ((Access) << 14) | ((Function) << 2) | (Method) \
+)
+#endif
+
+#define IOCTL_SET_KERNEL_RVA CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_START_VM_AND_HOOK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_STOP_VM_AND_UNHOOK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x802, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_ADD_HOOK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_REMOVE_HOOK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x804, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_GET_PHYSICAL_ADDRESS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x805, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_SET_SYSCALL_INDEX CTL_CODE(FILE_DEVICE_UNKNOWN, 0x806, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+typedef struct _KernelRvaInfo {
+    void* ZwCreateFileRVA;
+    void* KeServiceDescriptorTableRVA;
+} KernelRvaInfo, * PKernelRvaInfo;
+
+typedef struct _SyscallIndex {
+    char functionName[260];
+    UINT32 index;
+} SyscallIndexIn, * PSyscallIndexIn;
+
+#endif
