@@ -60,6 +60,44 @@ class HookFunctionManager
 		SystemCodeIntegrityInformation = 103
 	} SYSTEM_INFORMATION_CLASS;
 
+	typedef enum _SYSDBG_COMMAND {
+		SysDbgQueryMemory,                    // 0
+		SysDbgQuerySpecialMemory,             // 1
+		SysDbgReadMemory,                     // 2  读内核虚拟内存
+		SysDbgWriteMemory,                    // 3  写内核虚拟内存
+		SysDbgReadPhysicalMemory,             // 4  读物理内存
+		SysDbgWritePhysicalMemory,            // 5  写物理内存
+		SysDbgReadControlSpace,               // 6  读控制空间（kd 数据块）
+		SysDbgWriteControlSpace,              // 7
+		SysDbgReadIoSpace,                    // 8  读 I/O 端口空间
+		SysDbgWriteIoSpace,                   // 9
+		SysDbgReadMsr,                        // 10 读 MSR
+		SysDbgWriteMsr,                       // 11
+		SysDbgReadBusData,                    // 12
+		SysDbgWriteBusData,                   // 13
+		SysDbgCheckLowMemory,                 // 14
+		SysDbgEnableKernelDebugger,           // 15 运行时启用 kd
+		SysDbgDisableKernelDebugger,          // 16 运行时禁用 kd
+		SysDbgGetAutoKdEnable,                // 17
+		SysDbgSetAutoKdEnable,                // 18
+		SysDbgGetPrintBufferSize,             // 19
+		SysDbgSetPrintBufferSize,             // 20
+		SysDbgGetKdUmExceptionEnable,         // 21
+		SysDbgSetKdUmExceptionEnable,         // 22
+		SysDbgGetTriageDump,                  // 23
+		SysDbgGetKdBlockEnable,               // 24
+		SysDbgSetKdBlockEnable,               // 25
+		SysDbgRegisterForUmBreakInfo,         // 26
+		SysDbgGetUmBreakPid,                  // 27
+		SysDbgClearUmBreakPid,                // 28
+		SysDbgGetUmAttachPid,                 // 29
+		SysDbgClearUmAttachPid,               // 30
+		SysDbgGetLiveKernelDump,              // 31 Win10+ 触发 live dump
+		SysDbgGetKdPullModeEnable,            // 32 较新版本
+		SysDbgSetKdPullModeEnable,            // 33
+		SysDbgMaxCommand
+	} SYSDBG_COMMAND;
+
 	typedef struct _SYSTEM_KERNEL_DEBUGGER_INFORMATION {
 		BOOLEAN KernelDebuggerEnabled;      // 偏移 0x00
 		BOOLEAN KernelDebuggerNotPresent;   // 偏移 0x01
@@ -99,17 +137,28 @@ class HookFunctionManager
 			PVOID                    SystemInformation,
 			ULONG                    SystemInformationLength,
 			PULONG                   ReturnLength);
+	typedef NTSTATUS(NTAPI* PNtSystemDebugControl)(
+		__in SYSDBG_COMMAND Command,          // 要执行的操作
+		__in_opt PVOID InputBuffer,           // 输入参数（结构体，视命令而定）
+		__in ULONG InputBufferLength,
+		__out_opt PVOID OutputBuffer,
+		__in ULONG OutputBufferLength,
+		__out_opt PULONG ReturnLength);
+
 	inline static PNtCreateProcess pOldNtCreateProcess = NULL;
 	inline static PNtCreateProcess pNtCreateProcessCaller = NULL;
 	
-
 	inline static PNtCreateFile pOldNtCreateFile = NULL;
 	inline static PNtCreateFile pNtCreateFileCaller = NULL;
 
 	inline static PNtQuerySystemInformation pOldNtQuerySystemInformation = NULL;
 	inline static PNtQuerySystemInformation pNtQuerySystemInformationCaller = NULL;
 
+	inline static PNtSystemDebugControl pOldNtSystemDebugControl = NULL;
+	inline static PNtSystemDebugControl pNtSystemDebugControlCaller = NULL;
+
 	inline static unsigned char buffer[sizeof(KernelVector<SyscallIndexIn, MAIN_TAG, NonPaged>)];
+
 	static NTSTATUS NTAPI NtCreateProcessHandler(
 		_Out_ PHANDLE				ProcessHandle,
 		_In_  ACCESS_MASK			DesiredAccess,
@@ -179,12 +228,12 @@ class HookFunctionManager
 			ReturnLength);
 
 		if (SystemInformationClass == SystemCodeIntegrityInformation) {
-			KdPrint(("有程序检测测试模式, pid = %llu！\n", PsGetCurrentProcessId()));
+			//KdPrint(("有程序检测测试模式, pid = %llu！\n", PsGetCurrentProcessId()));
 			if (SystemInformation != NULL &&
 				SystemInformationLength >= sizeof(SYSTEM_CODEINTEGRITY_INFORMATION) &&
 				NT_SUCCESS(status)) {
 
-				KdPrint(("测试模式检测已经HOOK！\n"));
+				//KdPrint(("测试模式检测已经HOOK！\n"));
 
 				PSYSTEM_CODEINTEGRITY_INFORMATION pInfo =
 					(PSYSTEM_CODEINTEGRITY_INFORMATION)SystemInformation;
@@ -196,13 +245,13 @@ class HookFunctionManager
 
 		if (SystemInformationClass == SystemKernelDebuggerInformation)
 		{
-			KdPrint(("有程序检测内核调试, pid = %llu！\n", PsGetCurrentProcessId()));
+			//KdPrint(("有程序检测内核调试, pid = %llu！\n", PsGetCurrentProcessId()));
 
 			if (SystemInformation != NULL &&
 				SystemInformationLength >= sizeof(SYSTEM_KERNEL_DEBUGGER_INFORMATION) &&
 				NT_SUCCESS(status)) {
 
-				KdPrint(("内核调试检测已经HOOK！\n"));
+				//KdPrint(("内核调试检测已经HOOK！\n"));
 
 				PSYSTEM_KERNEL_DEBUGGER_INFORMATION debuggerInfo =
 					(PSYSTEM_KERNEL_DEBUGGER_INFORMATION)SystemInformation;
@@ -219,6 +268,25 @@ class HookFunctionManager
 		}
 
 		return status;
+	}
+
+	static NTSTATUS NTAPI NtSystemDebugControlHandler(
+		__in SYSDBG_COMMAND Command,          // 要执行的操作
+		__in_opt PVOID InputBuffer,           // 输入参数（结构体，视命令而定）
+		__in ULONG InputBufferLength,
+		__out_opt PVOID OutputBuffer,
+		__in ULONG OutputBufferLength,
+		__out_opt PULONG ReturnLength)
+	{
+		KdPrint(("有程序使用内核调试服务, pid = %llu！\n", PsGetCurrentProcessId()));
+		KdPrint(("内核调试服务已经HOOK！\n"));
+		UNREFERENCED_PARAMETER(Command);
+		UNREFERENCED_PARAMETER(InputBuffer);
+		UNREFERENCED_PARAMETER(InputBufferLength);
+		UNREFERENCED_PARAMETER(OutputBuffer);
+		UNREFERENCED_PARAMETER(OutputBufferLength);
+		UNREFERENCED_PARAMETER(ReturnLength);
+		return STATUS_DEBUGGER_INACTIVE;
 	}
 
 #pragma data_seg()
@@ -294,6 +362,16 @@ public:
 
 		record.pOriginVirtAddr = pOldNtQuerySystemInformation;
 		record.pGotoVirtAddr = NtQuerySystemInformationHandler;
+
+		pGlobalManager->eptHookManager.AddHook(record);
+
+		index = GetSyscallIndex("NtSystemDebugControl");
+
+		pOldNtSystemDebugControl = (PNtSystemDebugControl)GetSubFunctionInSSDTByIndex(pSSDT, index);
+		pNtSystemDebugControlCaller = (PNtSystemDebugControl)pGlobalManager->functionCallerManager.GetFunctionCaller(pOldNtSystemDebugControl);
+
+		record.pOriginVirtAddr = pOldNtSystemDebugControl;
+		record.pGotoVirtAddr = NtSystemDebugControlHandler;
 
 		pGlobalManager->eptHookManager.AddHook(record);
 	}
