@@ -167,105 +167,102 @@ bool EptHookManager::HandleEptViolation(VirtCpuInfo* pVirtCpuInfo, GenericRegist
 	EPT_VIOLATION_DATA info = {};
 	__vmx_vmread(EXIT_QUALIFICATION, &info.AsUInt64);
 
-	if (info.Fields.PTERead && info.Fields.Execute)
-	{
-		//通过修改执行权限实现hook，默认hook页面禁止执行，如果执行了hook页表，改为执行的hook页面允许执行，其他页面允许执行，执行出hook页面之后再恢复默认
-
-		//默认状态使用外部页表，其权限在添加hook时已经设置完毕
-		//hook页面执行时使用内部页表，内部页表默认禁止执行，这里修改执行的hook允许执行
-		//如果上次执行的是hook页面，恢复内部页表对应页为禁止执行
-
-		//获取CPU IDX
-		UINT32 cpuIdx = pVirtCpuInfo->otherInfo.cpuIdx;
-
-		//获取核心EPT HOOK状态
-		EptHookStatus& hookStatus = hookData[cpuIdx].hookStatus;
-
-		//获取对应的核心页表管理器
-		CoreEptPageTableManager& externalCorePageTableManager = pageTableManager1.GetCoreEptPageTables()[cpuIdx];
-		CoreEptPageTableManager& internalCorePageTableManager = pageTableManager2.GetCoreEptPageTables()[cpuIdx];
-
-		SIZE_TYPE swapPageIdx = INVALID_INDEX;
-		EptEntry entry = {};
-
-		PTR_TYPE tempPhyAddr = INVALID_ADDR;
-
-		EptHookData& data = hookData[cpuIdx];
-
-		EPT_TABLE_POINTER EPTP = {};
-
-		if (hookStatus.pLastActiveHookPageVirtAddr != NULL)
-		{
-			//根据虚拟地址查询交换页项目
-			swapPageIdx = data.FindSwapPageRefCntByOriginVirtAddr(hookStatus.pLastActiveHookPageVirtAddr);
-
-			if (swapPageIdx != INVALID_INDEX)
-			{
-				//恢复上次hook页面为禁止执行
-				entry.fields.readAccess = true;
-				entry.fields.writeAccess = true;
-				entry.fields.executeAccess = false;
-
-				tempPhyAddr = data.swapPageRecord[swapPageIdx].pOriginPhyAddr;
-
-				internalCorePageTableManager.ChangePageTableEntryPermession(tempPhyAddr, entry, 1);
-			}
-		}
-
-		//查询发生错误的页面是否为HOOK页面
-		swapPageIdx = data.FindSwapPageRefCntByOriginPhyAddr(pa.QuadPart & 0xFFFFFFFFFF000);
-
-		if (swapPageIdx != INVALID_INDEX)
-		{
-			//设置hook页面可执行
-			entry.fields.readAccess = true;
-			entry.fields.writeAccess = true;
-			entry.fields.executeAccess = true;
-
-			internalCorePageTableManager.ChangePageTableEntryPermession(pa.QuadPart, entry, 1);
-
-			//切换到内部页表
-			tempPhyAddr = internalCorePageTableManager.GetEptPageTablePa();
-
-			EPTP.Fields.PhysAddr = tempPhyAddr >> 12;
-			EPTP.Fields.PageWalkLength = 3;
-			EPTP.Fields.MemoryType = VTX_MEM_TYPE_UNCACHEABLE;
-
-			__vmx_vmwrite(EPT_POINTER, EPTP.AsUInt64);
-
-			//更新状态
-			hookStatus.pLastActiveHookPageVirtAddr = (PTR_TYPE)data.swapPageRecord[swapPageIdx].pOriginVirtAddr;
-			hookStatus.premissionStatus = EptHookStatus::PremissionStatus::HookPageExecuted;
-		}
-		else
-		{
-			//切换到外部页表
-			tempPhyAddr = externalCorePageTableManager.GetEptPageTablePa();
-
-			EPTP.Fields.PhysAddr = tempPhyAddr >> 12;
-			EPTP.Fields.PageWalkLength = 3;
-			EPTP.Fields.MemoryType = VTX_MEM_TYPE_UNCACHEABLE;
-
-			__vmx_vmwrite(EPT_POINTER, EPTP.AsUInt64);
-
-			//更新状态
-			hookStatus.pLastActiveHookPageVirtAddr = NULL;
-			hookStatus.premissionStatus = EptHookStatus::PremissionStatus::HookPageNotExecuted;
-		}
-
-		EPT_CTX ctx = {};
-
-		ctx.PEPT = EPTP.AsUInt64;
-
-		_invept(INV_SINGLE_CONTEXT, &ctx);
-
-		result = true;
-	}
-	else
+	//为了提升性能不使用位域，具体的标志位自己计算
+	if (!(info.AsUInt64 & 0x38))
 	{
 		result = pageTableManager1.HandleEptViolation(pVirtCpuInfo, pGuestRegisters) &&
 			pageTableManager2.HandleEptViolation(pVirtCpuInfo, pGuestRegisters);
 	}
+	else
+	{
+		if (info.AsUInt64 & 0x4 && info.AsUInt64 & 0x8)
+		{
+			//通过修改执行权限实现hook，默认hook页面禁止执行，如果执行了hook页表，改为执行的hook页面允许执行，其他页面允许执行，执行出hook页面之后再恢复默认
+
+			//默认状态使用外部页表，其权限在添加hook时已经设置完毕
+			//hook页面执行时使用内部页表，内部页表默认禁止执行，这里修改执行的hook允许执行
+			//如果上次执行的是hook页面，恢复内部页表对应页为禁止执行
+
+			//获取CPU IDX
+			UINT32 cpuIdx = pVirtCpuInfo->otherInfo.cpuIdx;
+
+			//获取核心EPT HOOK状态
+			EptHookStatus& hookStatus = hookData[cpuIdx].hookStatus;
+
+			//获取对应的核心页表管理器
+			CoreEptPageTableManager& externalCorePageTableManager = pageTableManager1.GetCoreEptPageTables()[cpuIdx];
+			CoreEptPageTableManager& internalCorePageTableManager = pageTableManager2.GetCoreEptPageTables()[cpuIdx];
+
+			SIZE_TYPE swapPageIdx = INVALID_INDEX;
+			EptEntry entry = {};
+
+			PTR_TYPE tempPhyAddr = INVALID_ADDR;
+
+			EptHookData& data = hookData[cpuIdx];
+
+			EPT_TABLE_POINTER EPTP = {};
+
+			if (hookStatus.pLastActiveHookPageVirtAddr != NULL)
+			{
+				//根据虚拟地址查询交换页项目
+				swapPageIdx = data.FindSwapPageRefCntByOriginVirtAddr(hookStatus.pLastActiveHookPageVirtAddr);
+
+				if (swapPageIdx != INVALID_INDEX)
+				{
+					//恢复上次hook页面为禁止执行
+					entry.data = 0x6;
+
+					tempPhyAddr = data.swapPageRecord[swapPageIdx].pOriginPhyAddr;
+
+					internalCorePageTableManager.ChangePageTableEntryPermession(tempPhyAddr, entry, 1);
+				}
+			}
+
+			//查询发生错误的页面是否为HOOK页面
+			swapPageIdx = data.FindSwapPageRefCntByOriginPhyAddr(pa.QuadPart & 0xFFFFFFFFFF000);
+
+			if (swapPageIdx != INVALID_INDEX)
+			{
+				//设置hook页面可执行
+				entry.data = 0x7;
+
+				internalCorePageTableManager.ChangePageTableEntryPermession(pa.QuadPart, entry, 1);
+
+				//切换到内部页表
+				tempPhyAddr = internalCorePageTableManager.GetEptPageTablePa();
+
+				EPTP.AsUInt64 = tempPhyAddr | (3ULL << 3) | VTX_MEM_TYPE_WRITEBACK;
+
+				__vmx_vmwrite(EPT_POINTER, EPTP.AsUInt64);
+
+				//更新状态
+				hookStatus.pLastActiveHookPageVirtAddr = (PTR_TYPE)data.swapPageRecord[swapPageIdx].pOriginVirtAddr;
+				hookStatus.premissionStatus = EptHookStatus::PremissionStatus::HookPageExecuted;
+			}
+			else
+			{
+				//切换到外部页表
+				tempPhyAddr = externalCorePageTableManager.GetEptPageTablePa();
+
+				EPTP.AsUInt64 = tempPhyAddr | (3ULL << 3) | VTX_MEM_TYPE_WRITEBACK;
+
+				__vmx_vmwrite(EPT_POINTER, EPTP.AsUInt64);
+
+				//更新状态
+				hookStatus.pLastActiveHookPageVirtAddr = NULL;
+				hookStatus.premissionStatus = EptHookStatus::PremissionStatus::HookPageNotExecuted;
+			}
+
+			EPT_CTX ctx = {};
+
+			ctx.PEPT = EPTP.AsUInt64;
+
+			_invept(INV_SINGLE_CONTEXT, &ctx);
+
+			result = true;
+		}
+	}
+	
 
 	return result;
 }
@@ -452,8 +449,6 @@ NTSTATUS EptHookManager::AddHookInSignleCore(const EptHookRecord& record, UINT32
 		corePageTableManager1.ChangePageTableEntryPermession(pOriginPhyAddr, permission, 1);
 	}
 
-	MtrrMemoryTypeCache cache = GenMtrrMemoryTypeCache(GetSignletonMtrrData());
-
 	corePageTableManager1.UpdateMemoryType(GetSignletonMtrrData(), GetSignletonMtrrMemoryTypeCache());
 	corePageTableManager2.UpdateMemoryType(GetSignletonMtrrData(), GetSignletonMtrrMemoryTypeCache());
 
@@ -551,6 +546,9 @@ NTSTATUS EptHookManager::RemoveHookInSignleCore(PVOID pHookOriginVirtAddr, UINT3
 			if (!(--record.refCnt))
 			{
 				corePageTableManager1.UsingSmallPage(pOriginPhyAddr & 0xFFFFFFFFFFE00000, false);
+
+				EPT_CTX ctx = {};
+				_invept(INV_ALL_CONTEXTS, &ctx);
 
 				UINT64 entryPermission = pageTableManager2.GetDefaultPermission(2);
 
@@ -682,6 +680,7 @@ NTSTATUS EptHookManager::Init()
 	permission.fields.readAccess = true;
 	permission.fields.writeAccess = true;
 	permission.fields.executeAccess = false;
+	permission.fields.userModeExecute = false;
 
 	//最底层页表不允许执行
 	for (SIZE_TYPE idx = 0; idx < pageTableManager2.GetCoreEptPageTablesCnt(); ++idx)

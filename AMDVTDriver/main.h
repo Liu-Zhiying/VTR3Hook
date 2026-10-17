@@ -94,7 +94,7 @@ class HookFunctionManager
 			DebugPort,
 			ExceptionPort);
 
-		KdPrint(("NtCreateProcess called!\n"));
+		//KdPrint(("NtCreateProcess called!\n"));
 
 		return status;
 	}
@@ -125,7 +125,7 @@ class HookFunctionManager
 			EaBuffer,
 			EaLength);
 
-		KdPrint(("NtCreateFile called!\n"));
+		//KdPrint(("NtCreateFile called!\n"));
 
 		return status;
 	}

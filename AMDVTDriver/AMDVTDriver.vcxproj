@@ -65,13 +65,13 @@
   <PropertyGroup />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
-    <LibraryPath>D:\Data\Shared\VTR3Hook\AMDVTDriver\Librarys\lib;$(LibraryPath)</LibraryPath>
-    <IncludePath>D:\Data\Shared\VTR3Hook\AMDVTDriver\Librarys\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)Librarys\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)Librarys\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
-    <LibraryPath>D:\Data\Shared\VTR3Hook\AMDVTDriver\Librarys\lib;$(LibraryPath)</LibraryPath>
-    <IncludePath>D:\Data\Shared\VTR3Hook\AMDVTDriver\Librarys\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)Librarys\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)Librarys\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
