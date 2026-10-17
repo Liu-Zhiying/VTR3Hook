@@ -420,14 +420,14 @@ public:
 	}
 };
 
-using PageTableRecords3 = PageTableRecordBacket<0x1f>;
-using PageTableRecords2 = PageTableRecordBacket<0x7f>;
-using PageTableRecords1 = PageTableRecordBacket<0xff>;
+using PageTableRecords3 = PageTableRecordBacket<0xf>;
+using PageTableRecords2 = PageTableRecordBacket<0x3f>;
+using PageTableRecords1 = PageTableRecordBacket<0x7f>;
 
 class CoreEptPageTableManager;
 
 //页表管理器
-class PageTableManager : public IEptpProvider, public IManager, public IEptVInterceptPlugin, public IMsrInterceptPlugin
+class PageTableManager : public IManager, public IEptVInterceptPlugin, public IEptpProvider, public IMsrInterceptPlugin
 {
 public:
 	//页表条目设置器，这里这样写只是不好写lambda表达式，这个类就类似于一个lambda表达式

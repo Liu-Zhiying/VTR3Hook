@@ -502,7 +502,9 @@ bool PageTableManager::HandleEptViolation(VirtCpuInfo* pVirtCpuInfo, GenericRegi
 			if (data.Fields.Read)
 				entry.fields.readAccess = true;
 			if (data.Fields.Execute)
-				entry.fields.executeAccess = true;
+			{
+				entry.fields.executeAccess = true; 
+			}
 		};
 
 		auto getEptEntry = [&](const PTR_TYPE pa) -> EptEntry*
@@ -563,24 +565,10 @@ PVOID CoreEptPageTableManager::FindPageTableByPhyAddr(PTR_TYPE guestPa, UINT32 l
 
 	do
 	{
-		if (level >= 4)
-		{
-			result = (PVOID)pEptPageTableVa;
-			break;
-		}
+		tempPa = pEptPageTablePa;
+		tempVa = pEptPageTableVa;
 
-		if (!IsPagePresent(((EptPageTable*)pEptPageTableVa)->entries[pageTableIdx]))
-			break;
-
-		tempPa = GET_PHYADDR_FROM_PFN(((EptPageTable*)pEptPageTableVa)->entries[pageTableIdx].fields.pageFrameNumber);
-		tempVa = level3Records.FindVaFromPa(tempPa);
-
-		if (tempVa == INVALID_ADDR)
-			break;
-		else
-			result = (PVOID)tempVa;
-
-		for (levelIdx = 2; levelIdx >= level; --levelIdx)
+		for (levelIdx = 4; levelIdx >= level; --levelIdx)
 		{
 			pageTableIdx = ((guestPa >> (levelIdx * 9 + 12)) & 0x1ff);
 
@@ -591,12 +579,25 @@ PVOID CoreEptPageTableManager::FindPageTableByPhyAddr(PTR_TYPE guestPa, UINT32 l
 				break;
 
 			tempPa = GET_PHYADDR_FROM_PFN(((EptPageTable*)tempVa)->entries[pageTableIdx].fields.pageFrameNumber);
-			if (levelIdx == 1)
-				tempVa = level1Records.FindVaFromPa(tempPa);
-			else if (levelIdx == 2)
-				tempVa = level2Records.FindVaFromPa(tempPa);
-			else
+			
+			switch (levelIdx)
+			{
+			case 3:
+			{
 				tempVa = level3Records.FindVaFromPa(tempPa);
+				break;
+			}
+			case 2:
+			{
+				tempVa = level2Records.FindVaFromPa(tempPa);
+				break;
+			}
+			case 1:
+			{
+				tempVa = level1Records.FindVaFromPa(tempPa);
+				break;
+			}
+			}
 
 			if (tempVa == INVALID_ADDR)
 				break;
@@ -873,11 +874,14 @@ void CoreEptPageTableManager::Deinit()
 		level1Records.Clear();
 
 		//LEVEL 4 页表释放
-		FreeNonPagedMem((PVOID)pEptPageTableVa, PT_TAG);
+		if (pEptPageTableVa != INVALID_ADDR)
+		{
+			FreeNonPagedMem((PVOID)pEptPageTableVa, PT_TAG);
 
-		//置空
-		pEptPageTableVa = INVALID_ADDR;
-		pEptPageTablePa = INVALID_ADDR;
+			//置空
+			pEptPageTableVa = INVALID_ADDR;
+			pEptPageTablePa = INVALID_ADDR;
+		}
 	}
 }
 
@@ -923,6 +927,8 @@ NTSTATUS PageTableManager::Init()
 	PAGED_CODE();
 	NTSTATUS status = STATUS_SUCCESS;
 
+	pageTableCnt = 0;
+
 	do
 	{
 		if (corePageTables == NULL)
@@ -963,16 +969,18 @@ NTSTATUS PageTableManager::Init()
 void PageTableManager::Deinit()
 {
 	PAGED_CODE();
-	if (corePageTables != NULL)
+	if (pageTableCnt)
 	{
 		//释放CoreEptPageTableManager占用的资源
 		for (SIZE_TYPE idx = 0; idx < pageTableCnt; ++idx)
 			CallDestroyer(&corePageTables[idx]);
-		//释放CoreEptPageTableManager本省占用的内存
-		if (corePageTables != NULL)
-			FreeNonPagedMem(corePageTables, PT_TAG);
+		pageTableCnt = 0;
+	}
+	if (corePageTables != NULL)
+	{
+		//释放CoreEptPageTableManager本省占用的内存	
+		FreeNonPagedMem(corePageTables, PT_TAG);
 		//置空成员
 		corePageTables = NULL;
-		pageTableCnt = 0;
 	}
 }

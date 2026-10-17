@@ -516,14 +516,11 @@ extern "C" void VmExitHandler(VirtCpuInfo* pVirtCpuInfo, GenericRegisters* pGues
 	PTR_TYPE value = 0;
 
 	__vmx_vmread(GUEST_RIP, &value);
-	if (value != NULL)
-		pGuestRegisters->rip = value;
+	pGuestRegisters->rip = value;
 	__vmx_vmread(GUEST_RSP, &value);
-	if (value != NULL)
-		pGuestRegisters->rsp = value;
+	pGuestRegisters->rsp = value;
 	__vmx_vmread(GUEST_RFLAGS, &value);
-	if (value != NULL)
-		pGuestRegisters->rflags = value;
+	pGuestRegisters->rflags = value;
 
 	pGuestRegisters->extraInfo1 = 0;
 	pGuestRegisters->extraInfo2 = 0;
@@ -944,9 +941,9 @@ NTSTATUS VTXManager::EnterVirtualization()
 	// them when we're done. And make sure to enter us in x64 mode at all times
 	vmExitCtlRequested.Fields.AcknowledgeInterruptOnExit = TRUE;
 	vmExitCtlRequested.Fields.HostAddressSpaceSize = TRUE;
-	vmExitCtlRequested.Fields.SaveDebugControls = TRUE;
-	vmExitCtlRequested.Fields.SaveIA32_EFER = TRUE;
-	vmExitCtlRequested.Fields.SaveIA32_PAT = TRUE;
+	//vmExitCtlRequested.Fields.SaveDebugControls = TRUE;
+	//vmExitCtlRequested.Fields.SaveIA32_EFER = TRUE;
+	//vmExitCtlRequested.Fields.SaveIA32_PAT = TRUE;
 	//vmExitCtlRequested.Fields.LoadIA32_EFER = TRUE;
 	//vmExitCtlRequested.Fields.LoadIA32_PAT = TRUE;
 
@@ -955,9 +952,9 @@ NTSTATUS VTXManager::EnterVirtualization()
 	// want to activate the MSR bitmap in order to keep them from being caught.
 	vmCpuCtlRequested.Fields.UseMSRBitmaps = TRUE;
 	vmCpuCtlRequested.Fields.ActivateSecondaryControl = TRUE;
-	//vmCpuCtlRequested.Fields.INVLPGExiting = FALSE;
+	vmCpuCtlRequested.Fields.INVLPGExiting = FALSE;
 	//vmCpuCtlRequested.Fields.UseTSCOffseting = TRUE;
-	//vmCpuCtlRequested.Fields.RDTSCExiting = TRUE;
+	vmCpuCtlRequested.Fields.RDTSCExiting = TRUE;
 	vmCpuCtl2Requested.Fields.EnableINVPCID = TRUE;
 	//vmCpuCtl2Requested.Fields.EnableVMFunctions = TRUE;
 
@@ -971,11 +968,13 @@ NTSTATUS VTXManager::EnterVirtualization()
 	vmCpuCtl2Requested.Fields.EnableRDTSCP = TRUE;
 	vmCpuCtl2Requested.Fields.EnableXSAVESXSTORS = TRUE;
 
+	vmCpuCtlRequested.Fields.CR3LoadExiting = FALSE;
+	vmCpuCtlRequested.Fields.CR3StoreExiting = FALSE;
+	vmCpuCtlRequested.Fields.CR8LoadExiting = FALSE;
+	vmCpuCtlRequested.Fields.CR8StoreExiting = FALSE;
+
 	if (features.VPID)
-	{
-		vmCpuCtlRequested.Fields.CR3LoadExiting = TRUE;
 		vmCpuCtl2Requested.Fields.EnableVPID = TRUE;
-	}
 
 	if (pEptpProvider != NULL)
 		vmCpuCtl2Requested.Fields.EnableEPT = TRUE;
@@ -1401,7 +1400,7 @@ void VTXManager::VmExitHandler_CrAccess(VirtCpuInfo* pVMMVirtCpuInfo, GenericReg
 	MOV_CR_QUALIFICATION data = {};
 	__vmx_vmread(EXIT_QUALIFICATION, (size_t*)&data);
 	PTR_TYPE* regPtr = getRegPtr(*pGuestRegisters, data.Fields.Register);
-	VPID_CTX ctx = {};
+	
 
 	switch (data.Fields.AccessType)
 	{
@@ -1417,6 +1416,8 @@ void VTXManager::VmExitHandler_CrAccess(VirtCpuInfo* pVMMVirtCpuInfo, GenericReg
 		}
 		case 3:
 		{
+			VPID_CTX ctx = {};
+			ctx.VPID = VIRTUAL_CPU_ID(pVMMVirtCpuInfo->otherInfo.cpuIdx);
 
 			PTR_TYPE cr4 = 0;
 			__vmx_vmread(GUEST_CR4, &cr4);
@@ -1425,6 +1426,9 @@ void VTXManager::VmExitHandler_CrAccess(VirtCpuInfo* pVMMVirtCpuInfo, GenericReg
 				*regPtr &= ~(1ull << 63);
 
 			__vmx_vmwrite(GUEST_CR3, *regPtr);
+
+			if (features.VPID)
+				_invvpid(INV_SINGLE_CONTEXT, &ctx);
 			break;
 		}
 		case 4:
@@ -1442,8 +1446,7 @@ void VTXManager::VmExitHandler_CrAccess(VirtCpuInfo* pVMMVirtCpuInfo, GenericReg
 		}
 		}
 
-		if (features.VPID)
-			_invvpid(INV_ALL_CONTEXTS, &ctx);
+		
 
 		break;
 	}
@@ -1759,7 +1762,15 @@ void VTXManager::VmExitHandler(VirtCpuInfo* pVMMVirtCpuInfo, GenericRegisters* p
 	PTR_TYPE exitReason = 0;
 	__vmx_vmread(VM_EXIT_REASON, &exitReason);
 
-	(this->*(exitHandlerArray[exitReason]))(pVMMVirtCpuInfo, pGuestRegisters);
+	if (exitReason == EXIT_REASON_EPT_VIOLATION)
+	{
+		if (pEptVInterceptPlugin != NULL)
+			pEptVInterceptPlugin->HandleEptViolation(pVMMVirtCpuInfo, pGuestRegisters);
+	}
+	else
+	{
+		(this->*(exitHandlerArray[exitReason]))(pVMMVirtCpuInfo, pGuestRegisters);
+	}
 
 	if (pGuestRegisters->rflags & (1ULL << EFLAGS_TF_OFFSET))
 	{
