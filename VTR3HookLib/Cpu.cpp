@@ -1,5 +1,8 @@
 #include "Cpu.h"
 
+constexpr UINT32 GUEST_CALL_VMM_VTXCALL_FUNCTION = 0x400000ff;
+constexpr UINT32 IS_IN_VTX_VTXCALL_SUBFUNCTION = 0x00000001;
+
 void CPUString(char* outputString)
 {
 	UINT32 cpuid_result[4] = {};
@@ -30,4 +33,28 @@ bool IsIntelCPU()
 		return false;
 
 	return true;
+}
+
+bool IntelCpuIsInVirtualization()
+{
+	__try
+	{
+		ULONG_PTR rax = GUEST_CALL_VMM_VTXCALL_FUNCTION, rbx = 0,
+				  rcx = IS_IN_VTX_VTXCALL_SUBFUNCTION, rdx = 0;
+		_vmcall(&rax, &rbx, &rcx, &rdx);
+
+		if (rax == 'IN' && rbx == 'TEL' && rcx == 'VTX')
+			return true;
+		else
+			return false;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		return false;
+	}
+}
+
+bool AMDCpuIsInVirtualization()
+{
+	return false;
 }

@@ -4,10 +4,19 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.14.36811.4
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VTR3Hook", "VTR3Hook\VTR3Hook.vcxproj", "{A1A8B941-944D-41BA-9E12-DF67177E8536}"
+	ProjectSection(ProjectDependencies) = postProject
+		{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A} = {800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "StartVTXHookDriverFromNone", "StartVTXHookDriverFromNone\StartVTXHookDriverFromNone.vcxproj", "{D82861F8-A531-D42D-E6EA-EB41C2FCE94E}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AMDVTDriver", "AMDVTDriver\AMDVTDriver.vcxproj", "{29A4DBD9-DF5D-DFF2-B82D-DEEEA4F2D0F2}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VTR3HookLib", "VTR3HookLib\VTR3HookLib.vcxproj", "{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}"
+	ProjectSection(ProjectDependencies) = postProject
+		{29A4DBD9-DF5D-DFF2-B82D-DEEEA4F2D0F2} = {29A4DBD9-DF5D-DFF2-B82D-DEEEA4F2D0F2}
+		{D82861F8-A531-D42D-E6EA-EB41C2FCE94E} = {D82861F8-A531-D42D-E6EA-EB41C2FCE94E}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -49,6 +58,14 @@ Global
 		{29A4DBD9-DF5D-DFF2-B82D-DEEEA4F2D0F2}.Release|x86.ActiveCfg = Release|x64
 		{29A4DBD9-DF5D-DFF2-B82D-DEEEA4F2D0F2}.Release|x86.Build.0 = Release|x64
 		{29A4DBD9-DF5D-DFF2-B82D-DEEEA4F2D0F2}.Release|x86.Deploy.0 = Release|x64
+		{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}.Debug|x64.ActiveCfg = Debug|x64
+		{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}.Debug|x64.Build.0 = Debug|x64
+		{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}.Debug|x86.ActiveCfg = Debug|Win32
+		{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}.Debug|x86.Build.0 = Debug|Win32
+		{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}.Release|x64.ActiveCfg = Release|x64
+		{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}.Release|x64.Build.0 = Release|x64
+		{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}.Release|x86.ActiveCfg = Release|Win32
+		{800A9E40-B76E-42E2-BDC8-FDCBAFA6EC7A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

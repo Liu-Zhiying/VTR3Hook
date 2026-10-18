@@ -63,7 +63,7 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 		//启用进程HOOK
 		pGlobalManager->eptHookManager.EnableProcessHook(DirectoryTableBaseRVA);
 
-		HookFunctionManager::HookSSDT(pKeServiceDescriptorTable, pGlobalManager);
+		//HookFunctionManager::HookSSDT(pKeServiceDescriptorTable, pGlobalManager);
 
 		Info = 0;                                              // 纯写入，无返回长度
 		break;
@@ -71,7 +71,7 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 
 	case IOCTL_STOP_VM_AND_UNHOOK:
 	{
-		HookFunctionManager::UnhookSSDT(pGlobalManager);
+		//HookFunctionManager::UnhookSSDT(pGlobalManager);
 
 		//禁用进程HOOK
 		pGlobalManager->eptHookManager.DisableProcessHook();

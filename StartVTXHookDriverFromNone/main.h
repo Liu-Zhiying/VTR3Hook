@@ -332,7 +332,7 @@ public:
 		record.pOriginVirtAddr = pOldNtCreateProcess;
 		record.pGotoVirtAddr = NtCreateProcessHandler;
 
-		//pGlobalManager->eptHookManager.AddHook(record);
+		pGlobalManager->eptHookManager.AddHook(record);
 		
 		index = GetSyscallIndex("NtCreateFile");
 		
@@ -342,7 +342,7 @@ public:
 		record.pOriginVirtAddr = pOldNtCreateFile;
 		record.pGotoVirtAddr = NtCreateFileHandler;
 
-		//pGlobalManager->eptHookManager.AddHook(record);
+		pGlobalManager->eptHookManager.AddHook(record);
 
 		// IOCTL 派发时当前就是用户进程上下文
 		PHYSICAL_ADDRESS pa = MmGetPhysicalAddress((PVOID)0x7FFE0000);
@@ -378,11 +378,11 @@ public:
 #pragma code_seg("PAGE")
 	static void UnhookSSDT(GlobalManager* pGlobalManager)
 	{
-		//pGlobalManager->eptHookManager.RemoveHook(NtCreateProcessHandler);
-		//pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
+		pGlobalManager->eptHookManager.RemoveHook(NtCreateProcessHandler);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
 
-		//pGlobalManager->eptHookManager.RemoveHook(NtCreateFileHandler);
-		//pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
+		pGlobalManager->eptHookManager.RemoveHook(NtCreateFileHandler);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
 
 		pGlobalManager->eptHookManager.RemoveHook(NtQuerySystemInformationHandler);
 		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtQuerySystemInformationHandler);
