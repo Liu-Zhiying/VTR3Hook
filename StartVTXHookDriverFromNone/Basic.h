@@ -478,7 +478,7 @@ _Pragma("code_seg()")																												\
 classname& operator=(classname&&) = default;
 
 //判断是否为内核地址
-constexpr bool IsKernelAddress(PVOID address)
+constexpr inline bool IsKernelAddress(PVOID address)
 {
 	return ((PTR_TYPE)address) & 0xffff000000000000;
 }

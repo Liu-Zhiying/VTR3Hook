@@ -7,6 +7,23 @@
 )
 #endif
 
+//一些类型别名
+typedef unsigned char UINT8;
+typedef char SINT8;
+typedef unsigned short UINT16;
+typedef short SINT16;
+typedef unsigned int UINT32;
+typedef int SINT32;
+typedef unsigned long long UINT64;
+typedef long long SINT64;
+#if defined(_WIN64)
+typedef UINT64 SIZE_TYPE;
+typedef UINT64 PTR_TYPE;
+#else
+typedef UINT32 SIZE_TYPE;
+typedef UINT32 PTR_TYPE;
+#endif
+
 #define IOCTL_SET_KERNEL_RVA CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_START_VM_AND_HOOK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_STOP_VM_AND_UNHOOK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x802, METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -18,11 +35,23 @@
 typedef struct _KernelRvaInfo {
     void* ZwCreateFileRVA;
     void* KeServiceDescriptorTableRVA;
+    void* DirectoryTableBaseRVA;
 } KernelRvaInfo, * PKernelRvaInfo;
 
 typedef struct _SyscallIndex {
     char functionName[260];
     UINT32 index;
 } SyscallIndexIn, * PSyscallIndexIn;
+
+
+
+struct EptProcessHookRecordIn
+{
+    PTR_TYPE processCr3;
+    PVOID pOriginVirtAddr;
+    PVOID pGotoVirtAddr;
+#pragma code_seg()
+    EptProcessHookRecordIn() : pOriginVirtAddr(NULL), processCr3(0), pGotoVirtAddr(NULL) {}
+};
 
 #endif

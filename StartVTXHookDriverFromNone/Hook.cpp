@@ -1,6 +1,56 @@
 #include "Hook.h"
 #include <intrin.h>
 
+#pragma warning(disable : 4201)
+
+typedef struct _KAPC_STATE {
+	LIST_ENTRY ApcListHead[MaximumMode];
+	struct _KPROCESS* Process;
+	union {
+		UCHAR InProgressFlags;
+		struct {
+			BOOLEAN KernelApcInProgress : 1;
+			BOOLEAN SpecialApcInProgress : 1;
+		};
+	};
+
+	BOOLEAN KernelApcPending;
+	union {
+		BOOLEAN UserApcPendingAll;
+		struct {
+			BOOLEAN SpecialUserApcPending : 1;
+			BOOLEAN UserApcPending : 1;
+		};
+	};
+} KAPC_STATE, * PKAPC_STATE, * PRKAPC_STATE;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#if (NTDDI_VERSION >= NTDDI_WIN2K)
+	_IRQL_requires_max_(APC_LEVEL)
+		NTKERNELAPI
+		VOID
+		KeStackAttachProcess(
+			_Inout_ PRKPROCESS PROCESS,
+			_Out_ PRKAPC_STATE ApcState
+		);
+#endif
+
+#if (NTDDI_VERSION >= NTDDI_WIN2K)
+	_IRQL_requires_max_(APC_LEVEL)
+		NTKERNELAPI
+		VOID
+		KeUnstackDetachProcess(
+			_In_ PRKAPC_STATE ApcState
+		);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
 extern "C" PTR_TYPE LStarHookCallback;
 extern "C" PTR_TYPE OldLStarEntry;
 extern "C" PTR_TYPE LStarHookCallbackParam1;
@@ -53,6 +103,20 @@ SIZE_TYPE EptHookData::FindHookRecordByOriginVirtAddr(PTR_TYPE pOriginAddr) cons
 }
 
 #pragma code_seg()
+inline SIZE_TYPE EptHookData::FindProcessHookRecordByOriginVirtAddrAndCr3(PTR_TYPE pOriginAddr, PTR_TYPE processCr3) const
+{
+	for (SIZE_TYPE index = 0; index < processHookRecords.Length(); ++index)
+	{
+		if (processHookRecords[index].pOriginVirtAddr == (PVOID)pOriginAddr &&
+			processHookRecords[index].processCr3 == processCr3)
+		{
+			return index;
+		}
+	}
+	return INVALID_INDEX;
+}
+
+#pragma code_seg()
 SIZE_TYPE EptHookData::FindSmallPageLevel2RefCntByPhyAddr(PTR_TYPE phyAddr) const
 {
 	SIZE_TYPE result = INVALID_INDEX;
@@ -87,13 +151,14 @@ SIZE_TYPE EptHookData::FindSwapPageRefCntByOriginPhyAddr(PTR_TYPE phyAddr) const
 }
 
 #pragma code_seg()
-SIZE_TYPE EptHookData::FindSwapPageRefCntByOriginVirtAddr(PTR_TYPE pOriginAddr) const
+SIZE_TYPE EptHookData::FindSwapPageRefCntByOriginVirtAddrAndCr3(PTR_TYPE pOriginAddr, PTR_TYPE cr3) const
 {
 	SIZE_TYPE result = INVALID_INDEX;
 
 	for (SIZE_TYPE idx = 0; idx < swapPageRecord.Length(); ++idx)
 	{
-		if (swapPageRecord[idx].pOriginVirtAddr == (PVOID)pOriginAddr)
+		if (swapPageRecord[idx].pOriginVirtAddr == (PVOID)pOriginAddr &&
+			swapPageRecord[idx].cr3 == cr3)
 		{
 			result = idx;
 			break;
@@ -103,13 +168,14 @@ SIZE_TYPE EptHookData::FindSwapPageRefCntByOriginVirtAddr(PTR_TYPE pOriginAddr) 
 	return result;
 }
 
-SIZE_TYPE EptHookData::FindSwapPageRefCntBySwapVirtAddr(PTR_TYPE pSwapAddr) const
+SIZE_TYPE EptHookData::FindSwapPageRefCntBySwapVirtAddrAndCr3(PTR_TYPE pSwapAddr, PTR_TYPE cr3) const
 {
 	SIZE_TYPE result = INVALID_INDEX;
 
 	for (SIZE_TYPE idx = 0; idx < swapPageRecord.Length(); ++idx)
 	{
-		if (swapPageRecord[idx].pSwapVirtAddr == (PVOID)pSwapAddr)
+		if (swapPageRecord[idx].pSwapVirtAddr == (PVOID)pSwapAddr &&
+			swapPageRecord[idx].cr3 == cr3)
 		{
 			result = idx;
 			break;
@@ -143,13 +209,28 @@ bool EptHookManager::HandleBreakpoint(VirtCpuInfo* pVirtCpuInfo, GenericRegister
 
 	const EptHookData& data = hookData[pVirtCpuInfo->otherInfo.cpuIdx];
 
-	//如果匹配到hook，直接跳转
-	SIZE_TYPE hookIdx = data.FindHookRecordByOriginVirtAddr(pGuestRegisters->rip);
-
-	if (hookIdx != INVALID_INDEX)
+	if (enableProcessHook && !IsKernelAddress((PVOID)pGuestRegisters->rip))
 	{
-		pGuestRegisters->rip = (UINT64)data.hookRecords[hookIdx].pGotoVirtAddr;
-		result = true;
+		PTR_TYPE gCr3 = _vmread(GUEST_CR3);
+
+		SIZE_TYPE hookIdx = data.FindProcessHookRecordByOriginVirtAddrAndCr3(pGuestRegisters->rip, gCr3);
+
+		if (hookIdx != INVALID_INDEX)
+		{
+			pGuestRegisters->rip = (UINT64)data.processHookRecords[hookIdx].pGotoVirtAddr;
+			result = true;
+		}
+	}
+	else
+	{
+		//如果匹配到hook，直接跳转
+		SIZE_TYPE hookIdx = data.FindHookRecordByOriginVirtAddr(pGuestRegisters->rip);
+
+		if (hookIdx != INVALID_INDEX)
+		{
+			pGuestRegisters->rip = (UINT64)data.hookRecords[hookIdx].pGotoVirtAddr;
+			result = true;
+		}
 	}
 
 	return result;
@@ -165,6 +246,7 @@ bool EptHookManager::HandleEptViolation(VirtCpuInfo* pVirtCpuInfo, GenericRegist
 	PHYSICAL_ADDRESS pa = {};
 	pa.QuadPart = _vmread(GUEST_PHYSICAL_ADDRESS);
 	EPT_VIOLATION_DATA info = { _vmread(EXIT_QUALIFICATION) };
+	PTR_TYPE cr3 = _vmread(GUEST_CR3);
 
 	if (info.AsUInt64 & 0x4 && info.AsUInt64 & 0x8)
 	{
@@ -194,7 +276,10 @@ bool EptHookManager::HandleEptViolation(VirtCpuInfo* pVirtCpuInfo, GenericRegist
 		if (hookStatus.pLastActiveHookPageVirtAddr != NULL)
 		{
 			//根据虚拟地址查询交换页项目
-			swapPageIdx = data.FindSwapPageRefCntByOriginVirtAddr(hookStatus.pLastActiveHookPageVirtAddr);
+			if (!IsKernelAddress((PVOID)hookStatus.pLastActiveHookPageVirtAddr))
+				swapPageIdx = data.FindSwapPageRefCntByOriginVirtAddrAndCr3(hookStatus.pLastActiveHookPageVirtAddr, cr3);
+			else
+				swapPageIdx = data.FindSwapPageRefCntByOriginVirtAddrAndCr3(hookStatus.pLastActiveHookPageVirtAddr);
 
 			if (swapPageIdx != INVALID_INDEX)
 			{
@@ -328,7 +413,7 @@ NTSTATUS EptHookManager::AddHookInSignleCore(const EptHookRecord& record, UINT32
 	do
 	{
 		//检查hook条目是否存在
-		hookIdx = hookData[idx].FindHookRecordByOriginVirtAddr((PTR_TYPE)record.pOriginVirtAddr);
+		hookIdx = hookData[idx].FindHookRecordByOriginVirtAddr((PTR_TYPE)pOriginPhyAddr);
 
 		if (hookIdx != INVALID_INDEX)
 		{
@@ -338,7 +423,7 @@ NTSTATUS EptHookManager::AddHookInSignleCore(const EptHookRecord& record, UINT32
 
 		hookData[idx].hookRecords.PushBack(record);
 
-		swapPageIdx = hookData[idx].FindSwapPageRefCntByOriginVirtAddr(pOriginPageVirtAddr);
+		swapPageIdx = hookData[idx].FindSwapPageRefCntByOriginVirtAddrAndCr3(pOriginPageVirtAddr);
 
 		if (swapPageIdx == INVALID_INDEX)
 		{
@@ -450,7 +535,7 @@ NTSTATUS EptHookManager::AddHookInSignleCore(const EptHookRecord& record, UINT32
 
 	} while (false);
 
-	swapPageIdx = hookData[idx].FindSwapPageRefCntByOriginVirtAddr(pOriginPageVirtAddr);
+	swapPageIdx = hookData[idx].FindSwapPageRefCntByOriginVirtAddrAndCr3(pOriginPageVirtAddr);
 
 	if (NT_SUCCESS(status) && newSwapCntRef)
 	{
@@ -467,8 +552,6 @@ NTSTATUS EptHookManager::AddHookInSignleCore(const EptHookRecord& record, UINT32
 
 		//设置页交换
 		corePageTableManager2.SwapSmallPagePpn(pOriginPhyAddr, swapPagePhyAddr, 1);
-
-
 
 		permission.fields.readAccess = true;
 		permission.fields.writeAccess = true;
@@ -513,7 +596,7 @@ NTSTATUS EptHookManager::RemoveHookInSignleCore(PVOID pHookOriginVirtAddr, UINT3
 			break;
 		}
 
-		swapPageIdx = hookData[idx].FindSwapPageRefCntByOriginVirtAddr(pOriginPageVirtAddr);
+		swapPageIdx = hookData[idx].FindSwapPageRefCntByOriginVirtAddrAndCr3(pOriginPageVirtAddr);
 
 		if (swapPageIdx != INVALID_INDEX)
 		{
@@ -608,6 +691,362 @@ NTSTATUS EptHookManager::RemoveHookInSignleCore(PVOID pHookOriginVirtAddr, UINT3
 }
 
 #pragma code_seg()
+NTSTATUS EptHookManager::AddProcessHookInSignleCore(const EptProcessHookRecord& record, PEPROCESS pProcess, UINT32 idx)
+{
+	NTSTATUS status = STATUS_SUCCESS;
+	PTR_TYPE pOriginPhyAddr = MmGetPhysicalAddress(record.pOriginVirtAddr).QuadPart;
+	PTR_TYPE pOriginPageVirtAddr = (PTR_TYPE)record.pOriginVirtAddr & 0xfffffffffffff000;
+	SIZE_TYPE smallPagIdx = INVALID_INDEX;
+	SIZE_TYPE swapPageIdx = INVALID_INDEX;
+	SIZE_TYPE hookIdx = INVALID_INDEX;
+	UINT8* swapPageVirtAddr = NULL;
+	PTR_TYPE swapPagePhyAddr = INVALID_ADDR;
+	PTR_TYPE cr3 = GetProcessCr3(pProcess);
+	bool needChangePagePermission = false;
+	bool newSwapCntRef = false;
+
+	EptProcessHookRecord recordCopy = record;
+	recordCopy.processCr3 = cr3;
+
+	CoreEptPageTableManager& corePageTableManager1 = pageTableManager1.GetCoreEptPageTables()[idx];
+	CoreEptPageTableManager& corePageTableManager2 = pageTableManager2.GetCoreEptPageTables()[idx];
+
+	auto changeToSmallPage = [](CoreEptPageTableManager& pageTableManager, PTR_TYPE pa) -> NTSTATUS
+		{
+			NTSTATUS status = STATUS_SUCCESS;
+
+			do
+			{
+				status = pageTableManager.UsingSmallPage(pa, true);
+
+				if (!NT_SUCCESS(status)) break;
+
+				status = pageTableManager.MapSmallPageByPhyAddr(pa, pa + 0x200000);
+
+				if (!NT_SUCCESS(status))
+				{
+					pageTableManager.UsingSmallPage(pa, false);
+					break;
+				}
+
+			} while (false);
+
+			return status;
+		};
+
+	do
+	{
+		//检查hook条目是否存在
+		hookIdx = hookData[idx].FindProcessHookRecordByOriginVirtAddrAndCr3((PTR_TYPE)pOriginPhyAddr, cr3);
+
+		if (hookIdx != INVALID_INDEX)
+		{
+			status = STATUS_INSUFFICIENT_RESOURCES;
+			break;
+		}
+
+		hookData[idx].processHookRecords.PushBack(recordCopy);
+
+		swapPageIdx = hookData[idx].FindSwapPageRefCntByOriginVirtAddrAndCr3(pOriginPageVirtAddr, cr3);
+
+		if (swapPageIdx == INVALID_INDEX)
+		{
+			swapPageVirtAddr = (UINT8*)AllocExecutableNonPagedMem(PAGE_SIZE, HOOK_TAG);
+
+			if (swapPageVirtAddr == NULL)
+			{
+				status = STATUS_UNSUCCESSFUL;
+				break;
+			}
+
+			PVOID pCopyPage = MmMapIoSpace(MmGetPhysicalAddress((PVOID)pOriginPageVirtAddr), PAGE_SIZE, MEMORY_CACHING_TYPE::MmCached);
+
+			if (pCopyPage == NULL)
+			{
+				status = STATUS_UNSUCCESSFUL;
+				break;
+			}
+
+			//拷贝数据
+			RtlCopyMemory(swapPageVirtAddr, (PVOID)pCopyPage, PAGE_SIZE);
+			//写入断点
+			swapPageVirtAddr[(PTR_TYPE)record.pOriginVirtAddr & 0xfff] = EptHookCode;
+
+			MmUnmapIoSpace((PVOID)pCopyPage, PAGE_SIZE);
+
+			//插入交换页对条目
+			SwapPageRecord newItem = {};
+
+			newItem.pOriginVirtAddr = (PVOID)pOriginPageVirtAddr;
+			newItem.pOriginPhyAddr = MmGetPhysicalAddress(newItem.pOriginVirtAddr).QuadPart;
+			newItem.pSwapVirtAddr = swapPageVirtAddr;
+			newItem.pSwapPhyAddr = MmGetPhysicalAddress(newItem.pSwapVirtAddr).QuadPart;
+			newItem.cr3 = cr3;
+			newItem.refCnt = 1;
+
+			swapPagePhyAddr = newItem.pSwapPhyAddr;
+
+			newSwapCntRef = true;
+
+			hookData[idx].swapPageRecord.PushBack(newItem);
+		}
+		else
+		{
+			SwapPageRecord swapPageRefCnt = {};
+
+			//获取交换页对条目
+			swapPageRefCnt = hookData[idx].swapPageRecord[swapPageIdx];
+
+			//写入断点
+			swapPageVirtAddr = (UINT8*)swapPageRefCnt.pSwapVirtAddr;
+			swapPageVirtAddr[(PTR_TYPE)record.pOriginVirtAddr & 0xfff] = EptHookCode;
+
+			//递增计数
+			++hookData[idx].swapPageRecord[swapPageIdx].refCnt;
+		}
+
+		//获取交换页的物理地址
+		swapPagePhyAddr = MmGetPhysicalAddress((PVOID)swapPageVirtAddr).QuadPart;
+
+		//设置交换页对应的页表为小页
+		//先查询是否有设置为小页的记录
+		smallPagIdx = hookData[idx].FindSmallPageLevel2RefCntByPhyAddr(swapPagePhyAddr & 0xFFFFFFFFFFE00000);
+
+		if (smallPagIdx == INVALID_INDEX)
+		{
+			//如果没有查询到为小页的记录，就设置为小页，并新增记录
+			status = changeToSmallPage(corePageTableManager1, swapPagePhyAddr & 0xFFFFFFFFFFE00000);
+
+			if (!NT_SUCCESS(status))
+				break;
+
+			status = changeToSmallPage(corePageTableManager2, swapPagePhyAddr & 0xFFFFFFFFFFE00000);
+
+			if (!NT_SUCCESS(status))
+				break;
+
+			SmallPageRecord newItem = {};
+
+			newItem.level3PhyAddr = swapPagePhyAddr & 0xFFFFFFFFFFE00000;
+			newItem.refCnt = 1;
+
+			hookData[idx].smallPageRecord.PushBack(newItem);
+		}
+		else
+		{
+			++hookData[idx].smallPageRecord[smallPagIdx].refCnt;
+		}
+
+		//设置原始页对应的页表为小页
+		//先查询是否有设置为小页的记录
+
+		smallPagIdx = hookData[idx].FindSmallPageLevel2RefCntByPhyAddr(pOriginPhyAddr & 0xFFFFFFFFFFE00000);
+
+		if (smallPagIdx == INVALID_INDEX)
+		{
+			//如果没有查询到为小页的记录，就设置为小页，并新增记录
+			status = changeToSmallPage(corePageTableManager1, pOriginPhyAddr & 0xFFFFFFFFFFE00000);
+
+			if (!NT_SUCCESS(status))
+				break;
+
+			status = changeToSmallPage(corePageTableManager2, pOriginPhyAddr & 0xFFFFFFFFFFE00000);
+
+			if (!NT_SUCCESS(status))
+				break;
+
+			needChangePagePermission = true;
+
+			SmallPageRecord newItem = {};
+
+			newItem.level3PhyAddr = pOriginPhyAddr & 0xFFFFFFFFFFE00000;
+
+			hookData[idx].smallPageRecord.PushBack(newItem);
+		}
+		else
+		{
+			++hookData[idx].smallPageRecord[smallPagIdx].refCnt;
+		}
+
+	} while (false);
+
+	swapPageIdx = hookData[idx].FindSwapPageRefCntByOriginVirtAddrAndCr3(pOriginPageVirtAddr, cr3);
+
+	if (NT_SUCCESS(status) && newSwapCntRef)
+	{
+		if (swapPageIdx != INVALID_INDEX)
+		{
+			EptPageTable* pEptTable = (EptPageTable*)corePageTableManager2.FindPageTableByPhyAddr(pOriginPhyAddr, 1);
+			hookData[idx].swapPageRecord[swapPageIdx].pSwapPageEptEntry = &pEptTable->entries[(pOriginPhyAddr >> 12) & 0x1ff];
+		}
+	}
+
+	if (NT_SUCCESS(status) && needChangePagePermission)
+	{
+		EptEntry permission = {};
+
+		//设置页交换
+		corePageTableManager2.SwapSmallPagePpn(pOriginPhyAddr, swapPagePhyAddr, 1);
+
+		permission.fields.readAccess = true;
+		permission.fields.writeAccess = true;
+		permission.fields.executeAccess = false;
+
+		corePageTableManager1.ChangePageTableEntryPermession(pOriginPhyAddr, permission, 1);
+	}
+
+	corePageTableManager1.UpdateMemoryType(GetSignletonMtrrData(), GetSignletonMtrrMemoryTypeCache());
+	corePageTableManager2.UpdateMemoryType(GetSignletonMtrrData(), GetSignletonMtrrMemoryTypeCache());
+
+	EPT_CTX ctx = {};
+	_invept(INV_ALL_CONTEXTS, &ctx);
+
+	return status;
+}
+
+#pragma code_seg()
+NTSTATUS EptHookManager::RemoveProcessHookInSignleCore(PVOID pHookOriginVirtAddr, PTR_TYPE processCr3, UINT32 idx)
+{
+	NTSTATUS status = STATUS_SUCCESS;
+	PTR_TYPE pOriginPhyAddr = MmGetPhysicalAddress(pHookOriginVirtAddr).QuadPart;
+	PTR_TYPE pOriginPageVirtAddr = (PTR_TYPE)pHookOriginVirtAddr & 0xfffffffffffff000;
+	SIZE_TYPE smallPagIdx = INVALID_INDEX;
+	SIZE_TYPE swapPageIdx = INVALID_INDEX;
+	SIZE_TYPE hookIdx = INVALID_INDEX;
+	UINT8* swapPageVirtAddr = NULL;
+	PTR_TYPE swapPagePhyAddr = INVALID_ADDR;
+	EptEntry permission = {};
+
+	CoreEptPageTableManager& corePageTableManager1 = pageTableManager1.GetCoreEptPageTables()[idx];
+	CoreEptPageTableManager& corePageTableManager2 = pageTableManager2.GetCoreEptPageTables()[idx];
+
+	do
+	{
+		//检查hook条目是否存在
+		hookIdx = hookData[idx].FindProcessHookRecordByOriginVirtAddrAndCr3((PTR_TYPE)pHookOriginVirtAddr, processCr3);
+
+		if (hookIdx == INVALID_INDEX)
+		{
+			status = STATUS_INSUFFICIENT_RESOURCES;
+			break;
+		}
+
+		swapPageIdx = hookData[idx].FindSwapPageRefCntByOriginVirtAddrAndCr3(pOriginPageVirtAddr, processCr3);
+
+		if (swapPageIdx != INVALID_INDEX)
+		{
+			SwapPageRecord& record = hookData[idx].swapPageRecord[swapPageIdx];
+
+			swapPageVirtAddr = (UINT8*)record.pSwapVirtAddr;
+
+			//还原HOOK
+			swapPageVirtAddr[(PTR_TYPE)record.pOriginVirtAddr & 0xfff] = *((UINT8*)record.pOriginVirtAddr);
+
+			if (!(--record.refCnt))
+			{
+				corePageTableManager2.SwapSmallPagePpn(record.pOriginPhyAddr, record.pSwapPhyAddr, 1);
+
+				//释放内存
+				FreeExecutableNonPagedMem(hookData[idx].swapPageRecord[swapPageIdx].pSwapVirtAddr, HOOK_TAG);
+
+				//删除记录项
+				hookData[idx].swapPageRecord.Remove(swapPageIdx);
+			}
+		}
+
+		//获取交换页的物理地址
+		swapPagePhyAddr = MmGetPhysicalAddress((PVOID)swapPageVirtAddr).QuadPart;
+
+		//递减计数，如果计数为0恢复大页并清除记录
+		smallPagIdx = hookData[idx].FindSmallPageLevel2RefCntByPhyAddr(swapPagePhyAddr & 0xFFFFFFFFFFE00000);
+
+		if (smallPagIdx != INVALID_INDEX)
+		{
+			SmallPageRecord& record = hookData[idx].smallPageRecord[smallPagIdx];
+			if (!(--record.refCnt))
+			{
+				corePageTableManager1.UsingSmallPage(swapPagePhyAddr & 0xFFFFFFFFFFE00000, false);
+
+				UINT64 entryPermission = pageTableManager2.GetDefaultPermission(2);
+
+				((EptEntry*)&entryPermission)->fields.executeAccess = false;
+
+				pageTableManager2.SetDefaultPermission(entryPermission, 2);
+
+				corePageTableManager2.UsingSmallPage(swapPagePhyAddr & 0xFFFFFFFFFFE00000, false);
+
+				((EptEntry*)&entryPermission)->fields.executeAccess = true;
+
+				pageTableManager2.SetDefaultPermission(entryPermission, 2);
+
+				hookData[idx].smallPageRecord.Remove(smallPagIdx);
+			}
+		}
+
+		//递减计数，如果计数为0恢复大页并清除记录
+		smallPagIdx = hookData[idx].FindSmallPageLevel2RefCntByPhyAddr(pOriginPhyAddr & 0xFFFFFFFFFFE00000);
+
+		if (smallPagIdx != INVALID_INDEX)
+		{
+			SmallPageRecord& record = hookData[idx].smallPageRecord[smallPagIdx];
+			if (!(--record.refCnt))
+			{
+				corePageTableManager1.UsingSmallPage(pOriginPhyAddr & 0xFFFFFFFFFFE00000, false);
+
+				EPT_CTX ctx = {};
+				_invept(INV_ALL_CONTEXTS, &ctx);
+
+				UINT64 entryPermission = pageTableManager2.GetDefaultPermission(2);
+
+				((EptEntry*)&entryPermission)->fields.executeAccess = false;
+
+				pageTableManager2.SetDefaultPermission(entryPermission, 2);
+
+				corePageTableManager2.UsingSmallPage(pOriginPhyAddr & 0xFFFFFFFFFFE00000, false);
+
+				((EptEntry*)&entryPermission)->fields.executeAccess = true;
+
+				pageTableManager2.SetDefaultPermission(entryPermission, 2);
+
+				hookData[idx].smallPageRecord.Remove(smallPagIdx);
+			}
+		}
+
+		hookData[idx].processHookRecords.Remove(hookIdx);
+
+	} while (false);
+
+	corePageTableManager1.UpdateMemoryType(GetSignletonMtrrData(), GetSignletonMtrrMemoryTypeCache());
+	corePageTableManager2.UpdateMemoryType(GetSignletonMtrrData(), GetSignletonMtrrMemoryTypeCache());
+
+	EPT_CTX ctx = {};
+	_invept(INV_ALL_CONTEXTS, &ctx);
+
+	return status;
+}
+
+#pragma code_seg()
+VOID EptHookManager::ProcessCallback(PEPROCESS Process, HANDLE ProcessId, PPS_CREATE_NOTIFY_INFO CreateInfo)
+{
+	UNREFERENCED_PARAMETER(ProcessId);
+	//进程退出处理
+	if (CreateInfo == NULL)
+	{
+		SIZE_TYPE index = 0;
+		while (index < pManager->hookData[0].processHookRecords.Length())
+		{
+			if (pManager->hookData[0].processHookRecords[index].processCr3 == pManager->GetProcessCr3(Process))
+			{
+				pManager->RemoveProcessHook(pManager->hookData[0].processHookRecords[index].pOriginVirtAddr,
+					pManager->hookData[0].processHookRecords[index].processCr3);
+				continue;
+			}
+			++index;
+		}
+	}
+}
+
+#pragma code_seg()
 bool EptHookManager::HandleMsrInterceptWrite(VirtCpuInfo* pVirtCpuInfo, GenericRegisters* pGuestRegisters, UINT32 msrNum)
 {
 	UNREFERENCED_PARAMETER(pGuestRegisters);
@@ -674,6 +1113,97 @@ NTSTATUS EptHookManager::RemoveHook(PVOID pHookOriginVirtAddr)
 	auto processor = [pHookOriginVirtAddr, this](UINT32 cpuIdx) -> NTSTATUS
 		{
 			return RemoveHookInSignleCore(pHookOriginVirtAddr, cpuIdx);
+		};
+
+	NTSTATUS status = RunOnEachCore(0, KeQueryMaximumProcessorCountEx(ALL_PROCESSOR_GROUPS), processor);
+
+	return status;
+}
+
+#pragma code_seg("PAGE")
+NTSTATUS EptHookManager::EnableProcessHook(PTR_TYPE _offsetOfDirectoryTableBase)
+{
+	PAGED_CODE();
+
+	if (enableProcessHook) return STATUS_SUCCESS;
+
+	NTSTATUS status = STATUS_SUCCESS;
+
+	if (!NT_SUCCESS(status))
+		return status;
+
+	pManager = this;
+
+	status = PsSetCreateProcessNotifyRoutineEx(ProcessCallback, FALSE);
+	if (!NT_SUCCESS(status))
+		return status;
+
+	enableProcessHook = true;
+	offsetOfDirectoryTableBase = _offsetOfDirectoryTableBase;
+
+	return status;
+}
+
+#pragma code_seg("PAGE")
+void EptHookManager::DisableProcessHook()
+{
+	PAGED_CODE();
+
+	if (enableProcessHook)
+	{
+		PsSetCreateProcessNotifyRoutineEx(ProcessCallback, TRUE);
+
+		while (hookData[0].processHookRecords.Length())
+		{
+			RemoveProcessHook(hookData[0].processHookRecords[0].pOriginVirtAddr,
+				hookData[0].processHookRecords[0].processCr3);
+		}
+
+		offsetOfDirectoryTableBase = 0;
+		enableProcessHook = false;
+	}
+}
+
+#pragma code_seg("PAGE")
+NTSTATUS EptHookManager::AddProcessHook(const EptProcessHookRecord& record, PEPROCESS pProcess)
+{
+	PAGED_CODE();
+
+	auto processor = [&record, pProcess, this](UINT32 cpuIdx) -> NTSTATUS
+		{
+			NTSTATUS status = STATUS_UNSUCCESSFUL;
+			KAPC_STATE apc;
+			KeStackAttachProcess((PKPROCESS)pProcess, &apc);
+			__try {
+				status = AddProcessHookInSignleCore(record, pProcess, cpuIdx);
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+			}
+			KeUnstackDetachProcess(&apc);
+			return status;
+		};
+
+	auto rollbacker = [&record, pProcess, this](UINT32 cpuIdx) -> NTSTATUS
+		{
+			return RemoveProcessHookInSignleCore(record.pOriginVirtAddr, GetProcessCr3(pProcess), cpuIdx);
+		};
+
+	NTSTATUS status = RunOnEachCore(0, KeQueryMaximumProcessorCountEx(ALL_PROCESSOR_GROUPS), processor);
+
+	if (!NT_SUCCESS(status))
+		RunOnEachCore(0, KeQueryMaximumProcessorCountEx(ALL_PROCESSOR_GROUPS), rollbacker);
+
+	return NT_SUCCESS(status) ? status : STATUS_UNSUCCESSFUL;
+}
+
+#pragma code_seg("PAGE")
+NTSTATUS EptHookManager::RemoveProcessHook(PVOID pHookOriginVirtAddr, PTR_TYPE processCr3)
+{
+	PAGED_CODE();
+
+	auto processor = [pHookOriginVirtAddr, processCr3, this](UINT32 cpuIdx) -> NTSTATUS
+		{
+			return RemoveProcessHookInSignleCore(pHookOriginVirtAddr, processCr3, cpuIdx);
 		};
 
 	NTSTATUS status = RunOnEachCore(0, KeQueryMaximumProcessorCountEx(ALL_PROCESSOR_GROUPS), processor);

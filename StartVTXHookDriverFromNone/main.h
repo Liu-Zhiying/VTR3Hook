@@ -278,14 +278,15 @@ class HookFunctionManager
 		__in ULONG OutputBufferLength,
 		__out_opt PULONG ReturnLength)
 	{
-		KdPrint(("有程序使用内核调试服务, pid = %llu！\n", PsGetCurrentProcessId()));
-		KdPrint(("内核调试服务已经HOOK！\n"));
+		//KdPrint(("有程序使用内核调试服务, pid = %llu！\n", PsGetCurrentProcessId()));
+		//KdPrint(("内核调试服务已经HOOK！\n"));
 		UNREFERENCED_PARAMETER(Command);
 		UNREFERENCED_PARAMETER(InputBuffer);
 		UNREFERENCED_PARAMETER(InputBufferLength);
 		UNREFERENCED_PARAMETER(OutputBuffer);
 		UNREFERENCED_PARAMETER(OutputBufferLength);
 		UNREFERENCED_PARAMETER(ReturnLength);
+		__debugbreak();
 		return STATUS_DEBUGGER_INACTIVE;
 	}
 
@@ -332,7 +333,7 @@ public:
 		record.pGotoVirtAddr = NtCreateProcessHandler;
 
 		//pGlobalManager->eptHookManager.AddHook(record);
-		/*
+		
 		index = GetSyscallIndex("NtCreateFile");
 		
 		pOldNtCreateFile = (PNtCreateFile)GetSubFunctionInSSDTByIndex(pSSDT, index);
@@ -341,8 +342,7 @@ public:
 		record.pOriginVirtAddr = pOldNtCreateFile;
 		record.pGotoVirtAddr = NtCreateFileHandler;
 
-		pGlobalManager->eptHookManager.AddHook(record);
-		*/
+		//pGlobalManager->eptHookManager.AddHook(record);
 
 		// IOCTL 派发时当前就是用户进程上下文
 		PHYSICAL_ADDRESS pa = MmGetPhysicalAddress((PVOID)0x7FFE0000);
@@ -380,7 +380,15 @@ public:
 	{
 		//pGlobalManager->eptHookManager.RemoveHook(NtCreateProcessHandler);
 		//pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
+
+		//pGlobalManager->eptHookManager.RemoveHook(NtCreateFileHandler);
+		//pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
+
+		pGlobalManager->eptHookManager.RemoveHook(NtQuerySystemInformationHandler);
 		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtQuerySystemInformationHandler);
+
+		pGlobalManager->eptHookManager.RemoveHook(NtSystemDebugControlHandler);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtSystemDebugControlHandler);
 		pNtCreateProcessCaller = NULL;
 	}
 };

@@ -22,28 +22,6 @@ constexpr LPCWSTR pDriverDeviceNameAMD = L"\\\\.\\AMDVTDriver";
 
 LONG continueValue = 1;
 
-void x1()
-{
-	printf("Hello,x1\n");
-}
-void x2()
-{
-	printf("Hello,x2\n");
-}
-
-//hook条目记录
-struct EptHookRecord
-{
-	//CR3地址
-	ULONG64 cr3;
-	//hook原始虚拟地址
-	PVOID pOriginVirtAddr;
-	//hook的跳转地址
-	PVOID pGotoVirtAddr;
-#pragma code_seg()
-	EptHookRecord() : cr3(0), pOriginVirtAddr(NULL), pGotoVirtAddr(NULL) {}
-};
-
 // GBK -> UTF-16 (std::wstring)
 std::wstring gbk_to_utf16(const std::string& gbk)
 {
@@ -92,7 +70,23 @@ std::string GetSystemPath()
 
 	return szFileName;
 }
+#pragma managed(push, off)
+extern "C" int x1()
+{
+	printf("Hello,x1\n");
+	printf("Hello,x1\n");
+	printf("Hello,x1\n");
+	return 0;
+}
 
+extern "C" int x2()
+{
+	printf("Hello,x2\n");
+	printf("Hello,x2\n");
+	printf("Hello,x2\n");
+	return 0;
+}
+#pragma managed(pop)
 int main()
 {
 	auto array = ReadSyscall();
@@ -212,6 +206,7 @@ int main()
 
 		rvaInfo.KeServiceDescriptorTableRVA = kiServiceTableRVA;
 		rvaInfo.ZwCreateFileRVA = zwCreateFileRVA;
+		rvaInfo.DirectoryTableBaseRVA = DirectoryTableBaseRVA;
 
 		if (!DeviceIoControl(hDevice, IOCTL_SET_KERNEL_RVA, &rvaInfo, sizeof rvaInfo, NULL, 0, NULL, NULL))
 		{
@@ -241,6 +236,25 @@ int main()
 			printf("HOOK SSDT 失败！\n");
 			break;
 		}
+		++step;
+
+		printf("address of x1 = %p, address of x2 = %p\n", x1, x2);
+
+		EptProcessHookRecordIn record = {};
+		record.pOriginVirtAddr = x1;
+		record.pGotoVirtAddr = x2;
+
+		if (!DeviceIoControl(hDevice, IOCTL_ADD_HOOK, &record, sizeof record, NULL, 0, NULL, NULL))
+		{
+			printf("HOOK 进程内存 失败！\n");
+			break;
+		}
+
+		x1();
+		x1();
+		x1();
+		x1();
+		x1();
 
 		system("pause");
 
@@ -250,6 +264,8 @@ int main()
 
 	switch (step)
 	{
+	case 4:
+		DeviceIoControl(hDevice, IOCTL_STOP_VM_AND_UNHOOK, NULL, 0, NULL, 0, NULL, NULL);
 	case 3:
 		if (hDevice != INVALID_HANDLE_VALUE)
 			CloseHandle(hDevice);

@@ -5,6 +5,7 @@
 #pragma data_seg()
 VOID* pNtosKrnlBase = NULL;
 VOID* pKeServiceDescriptorTable = NULL;
+PTR_TYPE DirectoryTableBaseRVA;
 GlobalManager* pGlobalManager = NULL;
 #pragma data_seg()
 
@@ -47,6 +48,7 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 
 			pNtosKrnlBase = (VOID*)((PCHAR)pZwCreateFile - (ULONG_PTR)pInfo->ZwCreateFileRVA);
 			pKeServiceDescriptorTable = (PCHAR)pNtosKrnlBase + (ULONG_PTR)pInfo->KeServiceDescriptorTableRVA;
+			DirectoryTableBaseRVA = (PTR_TYPE)pInfo->DirectoryTableBaseRVA;
 
 			Info = sizeof(KernelRvaInfo);
 		}
@@ -58,6 +60,9 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 		//开始进行虚拟化
 		pGlobalManager->vtxManager.EnterVirtualization();
 
+		//启用进程HOOK
+		pGlobalManager->eptHookManager.EnableProcessHook(DirectoryTableBaseRVA);
+
 		HookFunctionManager::HookSSDT(pKeServiceDescriptorTable, pGlobalManager);
 
 		Info = 0;                                              // 纯写入，无返回长度
@@ -67,6 +72,9 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 	case IOCTL_STOP_VM_AND_UNHOOK:
 	{
 		HookFunctionManager::UnhookSSDT(pGlobalManager);
+
+		//禁用进程HOOK
+		pGlobalManager->eptHookManager.DisableProcessHook();
 
 		//开始退出虚拟化
 		pGlobalManager->vtxManager.LeaveVirtualization();
@@ -93,13 +101,11 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 		ULONG inLen = IrpSp->Parameters.DeviceIoControl.InputBufferLength;   // 输入
 		//ULONG outLen = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;  // 输出
 
-		EptHookRecord record = {};
-
-		if (inLen == sizeof(EptHookRecord))
+		if (inLen == sizeof(EptProcessHookRecordIn))
 		{
-			EptHookRecord* pInfo = (EptHookRecord*)Irp->AssociatedIrp.SystemBuffer;
+			EptProcessHookRecordIn* pInfo = (EptProcessHookRecordIn*)Irp->AssociatedIrp.SystemBuffer;
 
-			pGlobalManager->eptHookManager.AddHook(*pInfo);
+			pGlobalManager->eptHookManager.AddProcessHook((EptProcessHookRecord&)*pInfo, PsGetCurrentProcess());
 
 			Info = inLen;
 		}
@@ -114,7 +120,7 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 		{
 			PVOID* pInfo = (PVOID*)Irp->AssociatedIrp.SystemBuffer;
 
-			pGlobalManager->eptHookManager.RemoveHook(*pInfo);
+			pGlobalManager->eptHookManager.RemoveProcessHook(*pInfo, pGlobalManager->eptHookManager.GetProcessCr3(PsGetCurrentProcess()));
 
 			Info = inLen;
 		}
