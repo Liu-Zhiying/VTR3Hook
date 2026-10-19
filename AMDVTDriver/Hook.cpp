@@ -372,7 +372,7 @@ bool NptHookManager::HandleNpf(VirtCpuInfo* pVirtCpuInfo, GenericRegisters* pGue
 				hookStatus.premissionStatus = NptHookStatus::PremissionStatus::HookPageNotExecuted;
 			}
 
-			pVirtCpuInfo->guestVmcb.controlFields.tlbControl = 0;
+			pVirtCpuInfo->guestVmcb.controlFields.tlbControl = 1;
 
 			result = true;
 		}
