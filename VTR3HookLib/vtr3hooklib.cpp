@@ -281,6 +281,7 @@ void DeinitHookDriver()
 void StartVMAndHook()
 {
 	if (IsIntelCPU() && IntelCpuIsInVirtualization()) return;
+	if (IsAMDCPU() && AMDCpuIsInVirtualization()) return;
 	if (!DeviceIoControl(hDevice, IOCTL_START_VM_AND_HOOK, NULL, 0, NULL, 0, NULL, NULL))
 		printf("进入虚拟化和HOOK失败！\n");
 }
@@ -288,6 +289,7 @@ void StartVMAndHook()
 void StopVMAndUnHook()
 {
 	if (IsIntelCPU() && !IntelCpuIsInVirtualization()) return;
+	if (IsAMDCPU() && AMDCpuIsInVirtualization()) return;
 	if (!DeviceIoControl(hDevice, IOCTL_STOP_VM_AND_UNHOOK, NULL, 0, NULL, 0, NULL, NULL))
 		printf("停止虚拟化和解除HOOK失败！\n");
 }
@@ -295,12 +297,15 @@ void StopVMAndUnHook()
 void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 {
 	if (IsIntelCPU() && !IntelCpuIsInVirtualization()) return;
-
+	if (IsAMDCPU() && AMDCpuIsInVirtualization()) return;
 	if (IsIntelCPU())
 	{
 		EptProcessHookRecordIn record = {};
 		record.pOriginVirtAddr = pOriginAddr;
 		record.pGotoVirtAddr = pGotoAddr;
+
+		VirtualLock(pOriginAddr, 1);
+		VirtualLock(pGotoAddr, 1);
 
 		if (!DeviceIoControl(hDevice, IOCTL_ADD_HOOK, &record, sizeof record, NULL, 0, NULL, NULL))
 		{
@@ -310,7 +315,18 @@ void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 	}
 	else if (IsAMDCPU())
 	{
-		DebugBreak();
+		NptProcessHookRecordIn record = {};
+		record.pOriginVirtAddr = pOriginAddr;
+		record.pGotoVirtAddr = pGotoAddr;
+
+		VirtualLock(pOriginAddr, 1);
+		VirtualLock(pGotoAddr, 1);
+
+		if (!DeviceIoControl(hDevice, IOCTL_ADD_HOOK, &record, sizeof record, NULL, 0, NULL, NULL))
+		{
+			printf("HOOK 进程内存 失败！\n");
+			return;
+		}
 	}
 	else
 	{
@@ -318,22 +334,17 @@ void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 	}
 }
 
-void UnhookFunction(PVOID pOriginAddr)
+void UnhookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 {
-	if (IsIntelCPU())
+	if (IsIntelCPU() && !IntelCpuIsInVirtualization()) return;
+	if (IsAMDCPU() && AMDCpuIsInVirtualization()) return;
+
+	VirtualUnlock(pOriginAddr, 1);
+	VirtualUnlock(pGotoAddr, 1);
+
+	if (!DeviceIoControl(hDevice, IOCTL_REMOVE_HOOK, &pOriginAddr, sizeof pOriginAddr, NULL, 0, NULL, NULL))
 	{
-		if (!DeviceIoControl(hDevice, IOCTL_REMOVE_HOOK, &pOriginAddr, sizeof pOriginAddr, NULL, 0, NULL, NULL))
-		{
-			printf("HOOK 进程内存 失败！\n");
-			return;
-		}
-	}
-	else if (IsAMDCPU())
-	{
-		DebugBreak();
-	}
-	else
-	{
+		printf("HOOK 进程内存 失败！\n");
 		return;
 	}
 }

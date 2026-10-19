@@ -7,6 +7,9 @@
 #include "CasLockers.h"
 #include <intrin.h>
 
+//辅助函数，用于跳转到VMM处理
+bool SetRegsThenSVMCallWrapper(PTR_TYPE* rax, PTR_TYPE* rbx, PTR_TYPE* rcx, PTR_TYPE* rdx);
+
 //配置MSR HOOK参数的CPUID的Function
 constexpr UINT32 CONFIGURE_MSR_HOOK_CPUID_FUNCTION = 0x400000fe;
 constexpr UINT32 READ_MSR_CPUID_SUBFUNCTION = 0x00000000;
@@ -17,9 +20,6 @@ constexpr UINT32 HOOK_TAG = MAKE_TAG('h', 'o', 'o', 'k');
 
 //int 3 opcode
 constexpr UINT32 NptHookCode = 0xCC;
-
-//辅助函数，用于跳转到VMM处理
-extern "C" void SetRegsThenCpuid(PTR_TYPE* rax, PTR_TYPE* rbx, PTR_TYPE* rcx, PTR_TYPE* rdx);
 
 //一些调用 VMM CPUID处理功能的参数定义
 struct MsrHookParameter
@@ -788,10 +788,14 @@ struct SwapPageRecord
 	PVOID pSwapVirtAddr;
 	//替换页面的物理地址
 	PTR_TYPE pSwapPhyAddr;
+	//NPT页表条目
+	PageTableLevel123Entry* pSwapPageEntry;
+	//CR3
+	PTR_TYPE cr3;
 	//使用计数
 	PTR_TYPE refCnt = 0;
 	#pragma code_seg()
-	SwapPageRecord() : pOriginVirtAddr(NULL), pOriginPhyAddr(INVALID_ADDR), pSwapVirtAddr(NULL), pSwapPhyAddr(INVALID_ADDR), refCnt(0) {}
+	SwapPageRecord() : pOriginVirtAddr(NULL), pOriginPhyAddr(INVALID_ADDR), pSwapVirtAddr(NULL), pSwapPhyAddr(INVALID_ADDR), refCnt(0), cr3(0), pSwapPageEntry(NULL) {}
 
 	DEFAULT_NONPAGED_COPY_AND_MOVE_FUNCTION_FOR_CLASS(SwapPageRecord)
 };
@@ -807,6 +811,17 @@ struct NptHookRecord
 	NptHookRecord() : pOriginVirtAddr(NULL), pGotoVirtAddr(NULL) {}
 
 	DEFAULT_NONPAGED_COPY_AND_MOVE_FUNCTION_FOR_CLASS(NptHookRecord)
+};
+
+struct NptProcessHookRecord
+{
+	PTR_TYPE processCr3;
+	PVOID pOriginVirtAddr;
+	PVOID pGotoVirtAddr;
+#pragma code_seg()
+	NptProcessHookRecord() : pOriginVirtAddr(NULL), processCr3(0), pGotoVirtAddr(NULL) {}
+
+	DEFAULT_NONPAGED_COPY_AND_MOVE_FUNCTION_FOR_CLASS(NptProcessHookRecord)
 };
 
 //每个核心的NPT HOOK状态
@@ -835,18 +850,22 @@ public:
 	KernelVector<SmallPageRecord, HOOK_TAG> smallPageRecord;
 	KernelVector<SwapPageRecord, HOOK_TAG> swapPageRecord;
 	KernelVector<NptHookRecord, HOOK_TAG> hookRecords;
+	//进程 HOOK 对应数据
+	KernelVector<NptProcessHookRecord, HOOK_TAG> processHookRecords;
 	NptHookStatus hookStatus;
 
 	//通过hook的原始虚拟地址查找记录（HookRecord）
 	SIZE_TYPE FindHookRecordByOriginVirtAddr(PTR_TYPE pOriginAddr) const;
+	//通过hook的原始物理地址查找记录（HookRecord）
+	inline SIZE_TYPE FindProcessHookRecordByOriginVirtAddrAndCr3(PTR_TYPE pOriginAddr, PTR_TYPE processCr3) const;
 	//通过物理地址（只带有Level 4 3 2三级偏移）查找小页记录（SmallPageLevel3RefCnt）
 	SIZE_TYPE FindSmallPageLevel2RefCntByPhyAddr(PTR_TYPE phyAddr) const;
 	//通过hook源物理地址查找交换页记录（SwapPageRefCnt）
 	SIZE_TYPE FindSwapPageRefCntByOriginPhyAddr(PTR_TYPE phyAddr) const;
 	//通过hook源虚拟地址查找交换页记录（SwapPageRefCnt）
-	SIZE_TYPE FindSwapPageRefCntByOriginVirtAddr(PTR_TYPE pOriginAddr) const;
+	inline SIZE_TYPE FindSwapPageRefCntByOriginVirtAddrAndCr3(PTR_TYPE pOriginAddr, PTR_TYPE cr3 = 0) const;
 	//通过交换页的虚拟地址查找交换记录（SwapPageRefCnt）
-	SIZE_TYPE FindSwapPageRefCntBySwapVirtAddr(PTR_TYPE pSwapAddr) const;
+	inline SIZE_TYPE FindSwapPageRefCntBySwapVirtAddrAndCr3(PTR_TYPE pSwapAddr, PTR_TYPE cr3 = 0) const;
 
 	NptHookData() = default;
 	~NptHookData() = default;
@@ -865,14 +884,35 @@ class NptHookManager : public IManager, public IBreakprointInterceptPlugin, publ
 	//内部页表管理器，每个核心在内部页表和外部页表之间切换，加快NPT HOOK的速度
 	PageTableManager pageTableManager2;
 
+	//DirectoryTableBase的偏移
+	PTR_TYPE offsetOfDirectoryTableBase;
+
+	//是否开启进程HOOK
+	static inline bool enableProcessHook = false;
+	static inline NptHookManager* pManager = NULL;
+
 	//添加hook
 	NTSTATUS AddHookInSignleCore(const NptHookRecord& record, UINT32 idx);
 	//删除hook，pHookOriginVirtAddr是hook位置的虚拟地址
 	NTSTATUS RemoveHookInSignleCore(PVOID pHookOriginVirtAddr, UINT32 idx);
 
+	NTSTATUS AddProcessHookInSignleCore(const NptProcessHookRecord& record, PEPROCESS pProcess, UINT32 idx);
+	//删除hook，pHookOriginVirtAddr是hook位置的虚拟地址
+	NTSTATUS RemoveProcessHookInSignleCore(PVOID pHookOriginVirtAddr, PTR_TYPE processCr3, UINT32 idx);
+
 	friend class FunctionInterface;
 
+	static VOID ProcessCallback(
+		PEPROCESS Process,
+		HANDLE ProcessId,
+		PPS_CREATE_NOTIFY_INFO CreateInfo);
+
 public:
+	#pragma code_seg()
+	inline PTR_TYPE GetProcessCr3(PEPROCESS pProcess) const
+	{
+		return *((PTR_TYPE*)((PCHAR)pProcess + offsetOfDirectoryTableBase));
+	}
 	//配置SVMManager
 	void SetupSVMManager(SVMManager& svmManager);
 	//HOOK 跳转
@@ -887,6 +927,18 @@ public:
 	NTSTATUS AddHook(const NptHookRecord& record);
 	//删除hook，pHookOriginVirtAddr是hook位置的虚拟地址
 	NTSTATUS RemoveHook(PVOID pHookOriginVirtAddr);
+
+	//启用和禁用进程HOOK
+	NTSTATUS EnableProcessHook(PTR_TYPE _offsetOfDirectoryTableBase);
+	void DisableProcessHook();
+
+	//添加hook
+	NTSTATUS AddProcessHook(const NptProcessHookRecord& record, PEPROCESS pProcess);
+	//删除hook，pHookOriginVirtAddr是hook位置的虚拟地址
+	NTSTATUS RemoveProcessHook(PVOID pHookOriginVirtAddr, PTR_TYPE processCr3);
+#pragma code_seg("PAGE")
+	bool IsProcessHookEnabled() { PAGED_CODE(); return enableProcessHook; }
+
 	virtual NTSTATUS Init() override;
 	virtual void Deinit() override;
 	#pragma code_seg("PAGE")

@@ -113,7 +113,6 @@
   <ItemGroup>
     <ClInclude Include="Basic.h" />
     <ClInclude Include="CasLockers.h" />
-    <ClInclude Include="CtrlDefine.h" />
     <ClInclude Include="Hook.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="PageTable.h" />

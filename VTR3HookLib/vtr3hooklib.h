@@ -10,7 +10,7 @@ void StartVMAndHook();
 void StopVMAndUnHook();
 
 void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr);
-void UnhookFunction(PVOID pOriginAddr);
+void UnhookFunction(PVOID pOriginAddr, PVOID pGotoAddr);
 
 #endif // !
 

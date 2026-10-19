@@ -168,6 +168,7 @@ SIZE_TYPE EptHookData::FindSwapPageRefCntByOriginVirtAddrAndCr3(PTR_TYPE pOrigin
 	return result;
 }
 
+#pragma code_seg()
 SIZE_TYPE EptHookData::FindSwapPageRefCntBySwapVirtAddrAndCr3(PTR_TYPE pSwapAddr, PTR_TYPE cr3) const
 {
 	SIZE_TYPE result = INVALID_INDEX;
@@ -658,9 +659,6 @@ NTSTATUS EptHookManager::RemoveHookInSignleCore(PVOID pHookOriginVirtAddr, UINT3
 			{
 				corePageTableManager1.UsingSmallPage(pOriginPhyAddr & 0xFFFFFFFFFFE00000, false);
 
-				EPT_CTX ctx = {};
-				_invept(INV_ALL_CONTEXTS, &ctx);
-
 				UINT64 entryPermission = pageTableManager2.GetDefaultPermission(2);
 
 				((EptEntry*)&entryPermission)->fields.executeAccess = false;
@@ -993,9 +991,6 @@ NTSTATUS EptHookManager::RemoveProcessHookInSignleCore(PVOID pHookOriginVirtAddr
 			{
 				corePageTableManager1.UsingSmallPage(pOriginPhyAddr & 0xFFFFFFFFFFE00000, false);
 
-				EPT_CTX ctx = {};
-				_invept(INV_ALL_CONTEXTS, &ctx);
-
 				UINT64 entryPermission = pageTableManager2.GetDefaultPermission(2);
 
 				((EptEntry*)&entryPermission)->fields.executeAccess = false;
@@ -1128,9 +1123,6 @@ NTSTATUS EptHookManager::EnableProcessHook(PTR_TYPE _offsetOfDirectoryTableBase)
 	if (enableProcessHook) return STATUS_SUCCESS;
 
 	NTSTATUS status = STATUS_SUCCESS;
-
-	if (!NT_SUCCESS(status))
-		return status;
 
 	pManager = this;
 

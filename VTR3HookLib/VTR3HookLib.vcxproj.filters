@@ -27,7 +27,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Cpu.h">
+    <ClInclude Include="cpu.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="driver_utils.h">
@@ -137,7 +137,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Cpu.cpp">
+    <ClCompile Include="cpu.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="driver_utils.cpp">

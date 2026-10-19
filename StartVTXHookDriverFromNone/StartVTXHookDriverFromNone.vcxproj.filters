@@ -43,9 +43,6 @@
     <ClInclude Include="SSDT.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="CtrlDefine.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Basic.cpp">

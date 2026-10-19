@@ -56,5 +56,19 @@ bool IntelCpuIsInVirtualization()
 
 bool AMDCpuIsInVirtualization()
 {
-	return false;
+	__try
+	{
+		ULONG_PTR rax = GUEST_CALL_VMM_VTXCALL_FUNCTION, rbx = 0,
+			rcx = IS_IN_VTX_VTXCALL_SUBFUNCTION, rdx = 0;
+		_vmmcall(&rax, &rbx, &rcx, &rdx);
+
+		if (rax == 'IN' && rbx == 'AMD' && rcx == 'SVM')
+			return true;
+		else
+			return false;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		return false;
+	}
 }

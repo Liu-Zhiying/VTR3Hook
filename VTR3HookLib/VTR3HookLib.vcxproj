@@ -133,7 +133,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="Cpu.h" />
+    <ClInclude Include="cpu.h" />
     <ClInclude Include="CtrlDefine.h" />
     <ClInclude Include="driver_utils.h" />
     <ClInclude Include="pdb_search.h" />
@@ -171,7 +171,7 @@
     <ClInclude Include="vtr3hooklib.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Cpu.cpp" />
+    <ClCompile Include="cpu.cpp" />
     <ClCompile Include="driver_utils.cpp" />
     <ClCompile Include="pdb_search.cpp" />
     <ClCompile Include="pdb_validator.cpp" />

@@ -1,7 +1,11 @@
 #ifndef CTRL_DEFINE_H
 #define CTRL_DEFINE_H
 
+#ifndef DRIVER_USE
 #include <Windows.h>
+#else
+#include <ntddk.h>
+#endif
 
 #ifndef CTL_CODE
 #define CTL_CODE( DeviceType, Function, Method, Access ) (                 \
@@ -45,8 +49,6 @@ typedef struct _SyscallIndex {
     UINT32 index;
 } SyscallIndexIn, * PSyscallIndexIn;
 
-
-
 struct EptProcessHookRecordIn
 {
     PTR_TYPE processCr3;
@@ -54,6 +56,15 @@ struct EptProcessHookRecordIn
     PVOID pGotoVirtAddr;
 #pragma code_seg()
     EptProcessHookRecordIn() : pOriginVirtAddr(NULL), processCr3(0), pGotoVirtAddr(NULL) {}
+};
+
+struct NptProcessHookRecordIn
+{
+    PTR_TYPE processCr3;
+    PVOID pOriginVirtAddr;
+    PVOID pGotoVirtAddr;
+#pragma code_seg()
+    NptProcessHookRecordIn() : pOriginVirtAddr(NULL), processCr3(0), pGotoVirtAddr(NULL) {}
 };
 
 #endif

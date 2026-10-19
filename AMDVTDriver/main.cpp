@@ -3,9 +3,9 @@
 #pragma data_seg()
 VOID* pNtosKrnlBase = NULL;
 VOID* pKeServiceDescriptorTable = NULL;
+PTR_TYPE DirectoryTableBaseRVA;
 GlobalManager* pGlobalManager = NULL;
 #pragma data_seg()
-
 
 #pragma code_seg("PAGE")
 NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
@@ -35,6 +35,7 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 
 			pNtosKrnlBase = (VOID*)((PCHAR)pZwCreateFile - (ULONG_PTR)pInfo->ZwCreateFileRVA);
 			pKeServiceDescriptorTable = (PCHAR)pNtosKrnlBase + (ULONG_PTR)pInfo->KeServiceDescriptorTableRVA;
+			DirectoryTableBaseRVA = (PTR_TYPE)pInfo->DirectoryTableBaseRVA;
 
 			Info = sizeof(KernelRvaInfo);
 		}
@@ -43,10 +44,13 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 
 	case IOCTL_START_VM_AND_HOOK:
 	{
+		//启用进程HOOK
+		pGlobalManager->nptHookManager.EnableProcessHook(DirectoryTableBaseRVA);
+
 		//开始进行虚拟化
 		pGlobalManager->svmManager.EnterVirtualization();
 
-		HookFunctionManager::HookSSDT(pKeServiceDescriptorTable, pGlobalManager);
+		//HookFunctionManager::HookSSDT(pKeServiceDescriptorTable, pGlobalManager);
 
 		Info = 0;                                              // 纯写入，无返回长度
 		break;
@@ -54,10 +58,13 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 
 	case IOCTL_STOP_VM_AND_UNHOOK:
 	{
-		HookFunctionManager::UnhookSSDT(pGlobalManager);
+		//HookFunctionManager::UnhookSSDT(pGlobalManager);
 
 		//开始退出虚拟化
 		pGlobalManager->svmManager.LeaveVirtualization();
+
+		//禁用进程HOOK
+		pGlobalManager->nptHookManager.DisableProcessHook();
 
 		Info = 0;
 		break;
@@ -81,13 +88,11 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 		ULONG inLen = IrpSp->Parameters.DeviceIoControl.InputBufferLength;   // 输入
 		//ULONG outLen = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;  // 输出
 
-		NptHookRecord record = {};
-
-		if (inLen == sizeof(NptHookRecord))
+		if (inLen == sizeof(NptProcessHookRecordIn))
 		{
-			NptHookRecord* pInfo = (NptHookRecord*)Irp->AssociatedIrp.SystemBuffer;
+			NptProcessHookRecordIn* pInfo = (NptProcessHookRecordIn*)Irp->AssociatedIrp.SystemBuffer;
 
-			pGlobalManager->nptHookManager.AddHook(*pInfo);
+			pGlobalManager->nptHookManager.AddProcessHook((NptProcessHookRecord&)*pInfo, PsGetCurrentProcess());
 
 			Info = inLen;
 		}
@@ -102,7 +107,7 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 		{
 			PVOID* pInfo = (PVOID*)Irp->AssociatedIrp.SystemBuffer;
 
-			pGlobalManager->nptHookManager.RemoveHook(*pInfo);
+			pGlobalManager->nptHookManager.RemoveProcessHook(*pInfo, pGlobalManager->nptHookManager.GetProcessCr3(PsGetCurrentProcess()));
 
 			Info = inLen;
 		}

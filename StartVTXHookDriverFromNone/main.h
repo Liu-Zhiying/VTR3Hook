@@ -1,12 +1,14 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#define DRIVER_USE
+
 #include "VTX.h"
 #include "Hook.h"
 #include "PageTable.h"
 #include "Basic.h"
 #include "SSDT.h"
-#include "CtrlDefine.h"
+#include "../VTR3HookLib/CtrlDefine.h"
 #include <stdio.h>
 #include <intrin.h>
 
@@ -44,6 +46,7 @@ public:
 
 class HookFunctionManager
 {
+public:
 	typedef enum _SYSTEM_INFORMATION_CLASS {
 		SystemBasicInformation = 0,
 		SystemPerformanceInformation = 2,
@@ -144,7 +147,17 @@ class HookFunctionManager
 		__out_opt PVOID OutputBuffer,
 		__in ULONG OutputBufferLength,
 		__out_opt PULONG ReturnLength);
-
+	typedef NTSTATUS(NTAPI* PNtLockVirtualMemory)(
+		_In_ HANDLE ProcessHandle,        // 目标进程，NtCurrentProcess()
+		_Inout_ PVOID* BaseAddress,       // 区域基址，按页向下对齐
+		_Inout_ PSIZE_T RegionSize,       // 大小，会被向上取整到页边界
+		_In_ ULONG MapType);              // MAP_PROCESS(1) 或 MAP_SYSTEM(2)
+	typedef NTSTATUS(NTAPI* PNtUnlockVirtualMemory)(
+		_In_ HANDLE ProcessHandle,        // 目标进程，NtCurrentProcess()
+		_Inout_ PVOID* BaseAddress,       // 区域基址，按页向下对齐
+		_Inout_ PSIZE_T RegionSize,       // 大小，会被向上取整到页边界
+		_In_ ULONG MapType);              // MAP_PROCESS(1) 或 MAP_SYSTEM(2)
+private:
 	inline static PNtCreateProcess pOldNtCreateProcess = NULL;
 	inline static PNtCreateProcess pNtCreateProcessCaller = NULL;
 	
@@ -286,7 +299,6 @@ class HookFunctionManager
 		UNREFERENCED_PARAMETER(OutputBuffer);
 		UNREFERENCED_PARAMETER(OutputBufferLength);
 		UNREFERENCED_PARAMETER(ReturnLength);
-		__debugbreak();
 		return STATUS_DEBUGGER_INACTIVE;
 	}
 
@@ -389,7 +401,6 @@ public:
 
 		pGlobalManager->eptHookManager.RemoveHook(NtSystemDebugControlHandler);
 		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtSystemDebugControlHandler);
-		pNtCreateProcessCaller = NULL;
 	}
 };
 

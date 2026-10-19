@@ -162,6 +162,17 @@ public:
 	virtual ~ISingleStepInterceptPlugin() {}
 };
 
+//vmmcall拦截插件
+class IVmmcallInterceptPlugin
+{
+public:
+	//处理拦截的DE事件，true代表已经处理，false代表未处理
+	virtual bool HandleVmmcall(VirtCpuInfo* pVirtCpuInfo, GenericRegisters* pGuestRegisters,
+		PVOID pGuestVmcbPhyAddr, PVOID pHostVmcbPhyAddr) = 0;
+#pragma code_seg()
+	virtual ~IVmmcallInterceptPlugin() {}
+};
+
 //NPT页表提供接口
 class INCr3Provider
 {
@@ -227,6 +238,7 @@ class SVMManager : public IManager
 	IBreakprointInterceptPlugin* pBreakpointInterceptPlugin;
 	ISingleStepInterceptPlugin* pSingleStepInterceptPlugin;
 	INCr3Provider* pNCr3Provider;
+	IVmmcallInterceptPlugin* pVmmcallInterceptPlugin;
 	IInvalidOpcodeInterceptPlugin* pInvalidOpcodeInterceptPlugin;
 	bool enableSce;
 
@@ -238,7 +250,7 @@ public:
 	//请勿调用该函数，这个函数由VMM自动调用
 	void VmExitHandler(VirtCpuInfo* pVirtCpuInfo, GenericRegisters* pGuestRegisters, PVOID pGuestVmcbPhyAddr, PVOID pHostVmcbPhyAddr);
 	#pragma code_seg("PAGE")
-	SVMManager() : pVirtCpuInfo(NULL), cpuCnt(0), pMsrInterceptPlugin(NULL), pCpuIdInterceptPlugin(NULL), pNpfInterceptPlugin(NULL), pNCr3Provider(NULL), pBreakpointInterceptPlugin(NULL), pInvalidOpcodeInterceptPlugin(NULL), pSingleStepInterceptPlugin(NULL), enableSce(true), pMsrBackupRestorePlugin(NULL) { PAGED_CODE(); }
+	SVMManager() : pVirtCpuInfo(NULL), cpuCnt(0), pMsrInterceptPlugin(NULL), pCpuIdInterceptPlugin(NULL), pNpfInterceptPlugin(NULL), pNCr3Provider(NULL), pBreakpointInterceptPlugin(NULL), pInvalidOpcodeInterceptPlugin(NULL), pSingleStepInterceptPlugin(NULL), enableSce(true), pMsrBackupRestorePlugin(NULL), pVmmcallInterceptPlugin(NULL) { PAGED_CODE(); }
 	#pragma code_seg("PAGE")
 	void SetMsrInterceptPlugin(IMsrInterceptPlugin* _pMsrInterceptPlugin) { PAGED_CODE(); pMsrInterceptPlugin = _pMsrInterceptPlugin; }
 	#pragma code_seg("PAGE")
@@ -267,6 +279,10 @@ public:
 	void SetSingleStepPlugin(ISingleStepInterceptPlugin* _pDebugInterceptPlugin) { PAGED_CODE(); pSingleStepInterceptPlugin = _pDebugInterceptPlugin; }
 	#pragma code_seg("PAGE")
 	ISingleStepInterceptPlugin* GetSingleStepPlugin() { PAGED_CODE(); return pSingleStepInterceptPlugin; }
+	#pragma code_seg("PAGE")
+	void SetVmmcallPlugin(IVmmcallInterceptPlugin* _pVmcallInterceptPlugin) { PAGED_CODE(); pVmmcallInterceptPlugin = _pVmcallInterceptPlugin; }
+	#pragma code_seg("PAGE")
+	IVmmcallInterceptPlugin* GetVmmcallPlugin() { PAGED_CODE(); return pVmmcallInterceptPlugin; }
 	#pragma code_seg("PAGE")
 	void SetMsrBackupRestorePlugin(IMsrBackupRestorePlugin* _pMsrHookPlugin) { PAGED_CODE(); pMsrBackupRestorePlugin = _pMsrHookPlugin; }
 	#pragma code_seg("PAGE")

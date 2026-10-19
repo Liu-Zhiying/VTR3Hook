@@ -1,6 +1,4 @@
 #include "main.h"
-#include "PageTable.h"
-#include "CtrlDefine.h"
 
 #pragma data_seg()
 VOID* pNtosKrnlBase = NULL;

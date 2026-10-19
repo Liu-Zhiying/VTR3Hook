@@ -850,7 +850,7 @@ class EptHookManager : public IManager, public IBreakprointInterceptPlugin, publ
 		PPS_CREATE_NOTIFY_INFO CreateInfo);
 
 public:
-#pragma code_seg()
+	#pragma code_seg()
 	inline PTR_TYPE GetProcessCr3(PEPROCESS pProcess) const
 	{
 		return *((PTR_TYPE*)((PCHAR)pProcess + offsetOfDirectoryTableBase));
