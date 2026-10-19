@@ -25,6 +25,77 @@ typedef char pdb_file_name[MAX_PATH];
 
 static const char MSF7_MAGIC[] = "Microsoft C/C++ MSF 7.00\r\n\x1a\DS\0\0\0";
 
+// ---------------------------------------------------------------
+// RVA -> 文件偏移 (按节表换算). 失败返回 0
+// 新工具链的文件里 DataDirectory[DEBUG].VA 存的是 RVA (本例 ntoskrnl.exe),
+// 老文件存的是文件偏移 —— 两种都可能遇到, 所以换算失败不算错误.
+// ---------------------------------------------------------------
+static DWORD rva_to_fileoff(const BYTE* pPe, DWORD rva, DWORD fileSize)
+{
+	const IMAGE_DOS_HEADER* pDos = (const IMAGE_DOS_HEADER*)pPe;
+	const IMAGE_NT_HEADERS32* pNt32 = (const IMAGE_NT_HEADERS32*)(pPe + pDos->e_lfanew);
+	if (pNt32->Signature != IMAGE_NT_SIGNATURE)
+		return 0;
+
+	DWORD numSections, sizeOpt;
+	const BYTE* pSec;
+
+	WORD magic = pNt32->OptionalHeader.Magic;   // Magic 在两种布局中偏移相同
+	if (magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+	{
+		const IMAGE_NT_HEADERS64* pNt64 = (const IMAGE_NT_HEADERS64*)pNt32;
+		numSections = pNt64->FileHeader.NumberOfSections;
+		sizeOpt = pNt64->FileHeader.SizeOfOptionalHeader;
+		pSec = (const BYTE*)pNt64 + FIELD_OFFSET(IMAGE_NT_HEADERS64, OptionalHeader) + sizeOpt;
+	}
+	else if (magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+	{
+		numSections = pNt32->FileHeader.NumberOfSections;
+		sizeOpt = pNt32->FileHeader.SizeOfOptionalHeader;
+		pSec = (const BYTE*)pNt32 + FIELD_OFFSET(IMAGE_NT_HEADERS32, OptionalHeader) + sizeOpt;
+	}
+	else
+		return 0;
+
+	if ((DWORD)((pSec - pPe) + numSections * sizeof(IMAGE_SECTION_HEADER)) > fileSize)
+		return 0;
+
+	const IMAGE_SECTION_HEADER* pSection = (const IMAGE_SECTION_HEADER*)pSec;
+	for (DWORD i = 0; i < numSections; ++i, ++pSection)
+	{
+		DWORD virtSize = pSection->Misc.VirtualSize ? pSection->Misc.VirtualSize
+			: pSection->SizeOfRawData;
+		if (rva >= pSection->VirtualAddress &&
+			rva < pSection->VirtualAddress + virtSize)
+		{
+			DWORD off = pSection->PointerToRawData + (rva - pSection->VirtualAddress);
+			return (off < fileSize) ? off : 0;
+		}
+	}
+	return 0;
+}
+
+// ---------------------------------------------------------------
+// 启发式校验: 像不像一个合法的调试目录数组
+// ---------------------------------------------------------------
+static bool looks_like_debug_dir(const BYTE* pPe, DWORD fileSize,
+	const IMAGE_DEBUG_DIRECTORY* pDir, DWORD count)
+{
+	if (count == 0) return false;
+	if ((const BYTE*)pDir < pPe ||
+		(const BYTE*)(pDir + count) > pPe + fileSize)
+		return false;
+	for (DWORD i = 0; i < count; ++i)
+	{
+		if (pDir[i].Type > 32)                              // 已知类型都是小值
+			return false;
+		if (pDir[i].PointerToRawData == 0 ||
+			pDir[i].PointerToRawData >= fileSize)
+			return false;
+	}
+	return true;
+}
+
 static int read_block(FILE* f, uint32_t block_size, uint32_t idx, uint8_t* out)
 {
 	if (fseek(f, (long)idx * block_size, SEEK_SET) != 0)
@@ -222,6 +293,7 @@ static bool get_pdb_info(const char* pefile, pdb_sig* sig, pdb_age* age, pdb_fil
 {
 	HANDLE hFile = INVALID_HANDLE_VALUE;
 	HANDLE hMapping = NULL;
+	LPCBYTE pPe = NULL;
 
 	bool ok = false;
 
@@ -237,52 +309,82 @@ static bool get_pdb_info(const char* pefile, pdb_sig* sig, pdb_age* age, pdb_fil
 		if (hMapping == NULL)
 			break;
 
-		LPCBYTE pPe = (LPCBYTE)MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+		pPe = (LPCBYTE)MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
 
 		if (pPe == NULL)
 			break;
 
-        // 获取DOS头
-        PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)pPe;
-		if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE)
+		DWORD fileSize = GetFileSize(hFile, NULL);
+		if (fileSize == INVALID_FILE_SIZE || fileSize < 0x1000)
 			break;
 
-        // 获取NT头
-        PIMAGE_NT_HEADERS pNtHeaders = (PIMAGE_NT_HEADERS)((DWORD_PTR)pPe + pDosHeader->e_lfanew);
-		if (pNtHeaders->Signature != IMAGE_NT_SIGNATURE)
+		// ---- DOS / NT 头 ----
+		const IMAGE_DOS_HEADER* pDos = (const IMAGE_DOS_HEADER*)pPe;
+		if (pDos->e_magic != IMAGE_DOS_SIGNATURE) break;
+		if (pDos->e_lfanew + sizeof(IMAGE_NT_HEADERS32) > fileSize) break;
+
+		const IMAGE_NT_HEADERS32* pNt32 = (const IMAGE_NT_HEADERS32*)(pPe + pDos->e_lfanew);
+		if (pNt32->Signature != IMAGE_NT_SIGNATURE) break;
+
+		// 按 Magic 区分 32/64 位可选头, 否则 DataDirectory 读出来是垃圾
+		DWORD debugVa = 0, debugSize = 0;
+		WORD magic = pNt32->OptionalHeader.Magic;
+		if (magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+		{
+			const IMAGE_NT_HEADERS64* pNt64 = (const IMAGE_NT_HEADERS64*)pNt32;
+			debugVa = pNt64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress;
+			debugSize = pNt64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size;
+		}
+		else if (magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+		{
+			debugVa = pNt32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress;
+			debugSize = pNt32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size;
+		}
+		else
 			break;
 
-        // 获取调试目录信息
-        if (pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size > 0) {
-            PIMAGE_DEBUG_DIRECTORY pDebugDir = (PIMAGE_DEBUG_DIRECTORY)((DWORD_PTR)pPe + pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress);
+		if (debugVa == 0 || debugSize < sizeof(IMAGE_DEBUG_DIRECTORY)) break;
 
-			SIZE_T debugDirConut = pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size / sizeof(IMAGE_DEBUG_DIRECTORY);
+		DWORD count = debugSize / sizeof(IMAGE_DEBUG_DIRECTORY);
 
-			while (debugDirConut--)
+		// ---- 两种语义各试一次 (关键修复) ----
+		// 解释1: VA 是 RVA      -> 走节表换算 (本例 ntoskrnl.exe 走这条: 0x11540 -> 0x10D40)
+		// 解释2: VA 是文件偏移  -> 直接用   (老文件走这条)
+		const IMAGE_DEBUG_DIRECTORY* dirs[2] = {};
+		DWORD nDirs = 0;
+
+		DWORD offRva = rva_to_fileoff(pPe, debugVa, fileSize);
+		if (offRva)
+			dirs[nDirs++] = (const IMAGE_DEBUG_DIRECTORY*)(pPe + offRva);
+		if (debugVa < fileSize && debugVa != offRva)
+			dirs[nDirs++] = (const IMAGE_DEBUG_DIRECTORY*)(pPe + debugVa);
+
+		for (DWORD c = 0; c < nDirs && !ok; ++c)
+		{
+			const IMAGE_DEBUG_DIRECTORY* pDir = dirs[c];
+			if (!looks_like_debug_dir(pPe, fileSize, pDir, count))
+				continue;                       // 这种解释不通, 换另一种
+
+			for (DWORD i = 0; i < count; ++i, ++pDir)
 			{
-				// 假设使用CodeView格式的调试信息
-				if (pDebugDir->Type == IMAGE_DEBUG_TYPE_CODEVIEW) {
-					// 这里需要根据CodeView格式进一步解析获取PDB签名信息
-					// 具体解析逻辑因CodeView格式而异，需要处理RSDS结构等
+				if (pDir->Type != IMAGE_DEBUG_TYPE_CODEVIEW) continue;
+				if (pDir->SizeOfData < 0x18) continue;
+				if (pDir->PointerToRawData >= fileSize) continue;
 
-					LPCBYTE pCodeView = pPe + pDebugDir->PointerToRawData;
+				const BYTE* pCv = pPe + pDir->PointerToRawData;
+				if (memcmp(pCv, "RSDS", 4) != 0) continue;   // NB10 = 旧格式 PDB 2.0
 
-					if (pCodeView[0] == 'R' && pCodeView[1] == 'S' && pCodeView[2] == 'D' && pCodeView[3] == 'S')
-					{
-						memcpy(sig, pCodeView + 0x4, sizeof (pdb_sig));
-
-						*age = *((pdb_age*)(pCodeView + 0x14));
-
-						strcpy_s((char*)filename, sizeof(pdb_file_name), (const char*)pCodeView + 0x18);
-
-						ok = true;
-					}
-
-				}
-				++pDebugDir;
+				memcpy(*sig, pCv + 4, 16);
+				*age = *(const DWORD*)(pCv + 20);
+				strcpy_s(*filename, sizeof(pdb_file_name), (const char*)(pCv + 24));
+				ok = true;
+				break;
 			}
-        }
+		}
 	} while (false);
+
+	if (pPe != NULL)
+		UnmapViewOfFile(pPe);
 
 	if (hFile != INVALID_HANDLE_VALUE)
 		CloseHandle(hFile);
