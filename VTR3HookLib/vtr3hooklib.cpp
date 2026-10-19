@@ -289,7 +289,7 @@ void StartVMAndHook()
 void StopVMAndUnHook()
 {
 	if (IsIntelCPU() && !IntelCpuIsInVirtualization()) return;
-	if (IsAMDCPU() && AMDCpuIsInVirtualization()) return;
+	if (IsAMDCPU() && !AMDCpuIsInVirtualization()) return;
 	if (!DeviceIoControl(hDevice, IOCTL_STOP_VM_AND_UNHOOK, NULL, 0, NULL, 0, NULL, NULL))
 		printf("Í£Ö¹ÐéÄâ»¯ºÍ½â³ýHOOKÊ§°Ü£¡\n");
 }
@@ -297,7 +297,7 @@ void StopVMAndUnHook()
 void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 {
 	if (IsIntelCPU() && !IntelCpuIsInVirtualization()) return;
-	if (IsAMDCPU() && AMDCpuIsInVirtualization()) return;
+	if (IsAMDCPU() && !AMDCpuIsInVirtualization()) return;
 	if (IsIntelCPU())
 	{
 		EptProcessHookRecordIn record = {};
@@ -319,8 +319,10 @@ void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 		record.pOriginVirtAddr = pOriginAddr;
 		record.pGotoVirtAddr = pGotoAddr;
 
-		VirtualLock(pOriginAddr, 1);
-		VirtualLock(pGotoAddr, 1);
+		if (!VirtualLock(pOriginAddr, 1))
+			printf("Ò³ÃæËø¶¨Ê§°Ü£¡\n");
+		if (!VirtualLock(pGotoAddr, 1))
+			printf("Ò³ÃæËø¶¨Ê§°Ü£¡\n");
 
 		if (!DeviceIoControl(hDevice, IOCTL_ADD_HOOK, &record, sizeof record, NULL, 0, NULL, NULL))
 		{
@@ -337,10 +339,12 @@ void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 void UnhookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 {
 	if (IsIntelCPU() && !IntelCpuIsInVirtualization()) return;
-	if (IsAMDCPU() && AMDCpuIsInVirtualization()) return;
+	if (IsAMDCPU() && !AMDCpuIsInVirtualization()) return;
 
-	VirtualUnlock(pOriginAddr, 1);
-	VirtualUnlock(pGotoAddr, 1);
+	if (!VirtualUnlock(pOriginAddr, 1))
+		printf("Ò³Ãæ½âËøÊ§°Ü£¡\n");
+	if (!VirtualUnlock(pGotoAddr, 1))
+		printf("Ò³Ãæ½âËøÊ§°Ü£¡\n");
 
 	if (!DeviceIoControl(hDevice, IOCTL_REMOVE_HOOK, &pOriginAddr, sizeof pOriginAddr, NULL, 0, NULL, NULL))
 	{

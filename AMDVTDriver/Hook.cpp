@@ -372,6 +372,8 @@ bool NptHookManager::HandleNpf(VirtCpuInfo* pVirtCpuInfo, GenericRegisters* pGue
 				hookStatus.premissionStatus = NptHookStatus::PremissionStatus::HookPageNotExecuted;
 			}
 
+			pVirtCpuInfo->guestVmcb.controlFields.tlbControl = 0;
+
 			result = true;
 		}
 	}
@@ -567,6 +569,9 @@ NTSTATUS NptHookManager::AddHookInSignleCore(const NptHookRecord& record, UINT32
 		permission.fields.executionDisabled = true;
 
 		corePageTableManager1.ChangePageTableEntryPermession(pOriginPhyAddr, permission, 1);
+
+		PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
+		SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
 	}
 
 	return status;
@@ -680,6 +685,9 @@ NTSTATUS NptHookManager::RemoveHookInSignleCore(PVOID pHookOriginVirtAddr, UINT3
 		hookData[idx].hookRecords.Remove(hookIdx);
 
 	} while (false);
+
+	PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
+	SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
 
 	return status;
 }
@@ -886,6 +894,9 @@ NTSTATUS NptHookManager::AddProcessHookInSignleCore(const NptProcessHookRecord& 
 		permission.fields.executionDisabled = true;
 
 		corePageTableManager1.ChangePageTableEntryPermession(pOriginPhyAddr, permission, 1);
+
+		PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
+		SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
 	}
 
 	return status;
@@ -998,6 +1009,9 @@ NTSTATUS NptHookManager::RemoveProcessHookInSignleCore(PVOID pHookOriginVirtAddr
 		hookData[idx].processHookRecords.Remove(hookIdx);
 
 	} while (false);
+
+	PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
+	SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
 
 	return status;
 }

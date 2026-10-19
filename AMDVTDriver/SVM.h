@@ -4,6 +4,13 @@
 #include "Basic.h"
 #include "VMCB.h"
 
+//AMD SVM 没有专门的VMMCALL指令，只能使用自定义CPUID
+//AMD 手册上给虚拟化预留的CPUID ID 为 0x40000000~0x400000ff
+constexpr UINT32 GUEST_CALL_VMM_SVMCALL_FUNCTION = 0x400000ff;
+constexpr UINT32 EXIT_SVM_SVMCALL_SUBFUNCTION = 0x00000000;
+constexpr UINT32 IS_IN_SVM_CPUID_SUBFUNCTION = 0x00000001;
+constexpr UINT32 FLUSH_TLB_SUBFUNCTION = 0x00000002;
+
 // 传入 #VMEXIT 处理函数，用于处理修改guest寄存器状态
 // 也用于 进入虚拟化前后的寄存器备份和恢复
 struct GenericRegisters

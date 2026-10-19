@@ -5,11 +5,6 @@
 //辅助函数，用于跳转到VMM处理
 bool SetRegsThenSVMCallWrapper(PTR_TYPE* rax, PTR_TYPE* rbx, PTR_TYPE* rcx, PTR_TYPE* rdx);
 
-//AMD SVM 没有专门的VMMCALL指令，只能使用自定义CPUID
-//AMD 手册上给虚拟化预留的CPUID ID 为 0x40000000~0x400000ff
-constexpr UINT32 GUEST_CALL_VMM_SVMCALL_FUNCTION = 0x400000ff;
-constexpr UINT32 EXIT_SVM_SVMCALL_SUBFUNCTION = 0x00000000;
-constexpr UINT32 IS_IN_SVM_CPUID_SUBFUNCTION = 0x00000001;
 constexpr UINT32 SVM_TAG = MAKE_TAG('s', 'v', 'm', ' ');
 
 //GDT表项，参考https://wiki.osdev.org/Global_Descriptor_Table#System_Segment_Descriptor
@@ -658,8 +653,18 @@ void SVMManager::VmExitHandler(VirtCpuInfo* pVMMVirtCpuInfo, GenericRegisters* p
 				*reinterpret_cast<UINT32*>(&pGuestRegisters->rcx) = 'SVM';
 				break;
 			}
+			case FLUSH_TLB_SUBFUNCTION:
+			{
+				pVMMVirtCpuInfo->guestVmcb.controlFields.tlbControl = 0;
+				break;
+			}
 			}
 		}
+
+		//guest到下一条指令执行
+		pGuestRegisters->rip = pVMMVirtCpuInfo->guestVmcb.controlFields.nRip;
+
+		break;
 	}
 	case VMEXIT_REASON_CPUID:
 	{

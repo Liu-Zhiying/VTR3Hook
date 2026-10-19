@@ -1,7 +1,10 @@
-#include "Cpu.h"
+#include "cpu.h"
 
 constexpr UINT32 GUEST_CALL_VMM_VTXCALL_FUNCTION = 0x400000ff;
 constexpr UINT32 IS_IN_VTX_VTXCALL_SUBFUNCTION = 0x00000001;
+
+constexpr UINT32 GUEST_CALL_VMM_SVMCALL_FUNCTION = 0x400000ff;
+constexpr UINT32 IS_IN_SVM_SVMCALL_SUBFUNCTION = 0x00000001;
 
 void CPUString(char* outputString)
 {
@@ -58,8 +61,8 @@ bool AMDCpuIsInVirtualization()
 {
 	__try
 	{
-		ULONG_PTR rax = GUEST_CALL_VMM_VTXCALL_FUNCTION, rbx = 0,
-			rcx = IS_IN_VTX_VTXCALL_SUBFUNCTION, rdx = 0;
+		ULONG_PTR rax = GUEST_CALL_VMM_SVMCALL_FUNCTION, rbx = 0,
+			rcx = IS_IN_SVM_SVMCALL_SUBFUNCTION, rdx = 0;
 		_vmmcall(&rax, &rbx, &rcx, &rdx);
 
 		if (rax == 'IN' && rbx == 'AMD' && rcx == 'SVM')

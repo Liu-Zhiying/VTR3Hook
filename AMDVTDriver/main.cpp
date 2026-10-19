@@ -60,11 +60,11 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 	{
 		//HookFunctionManager::UnhookSSDT(pGlobalManager);
 
-		//开始退出虚拟化
-		pGlobalManager->svmManager.LeaveVirtualization();
-
 		//禁用进程HOOK
 		pGlobalManager->nptHookManager.DisableProcessHook();
+
+		//开始退出虚拟化
+		pGlobalManager->svmManager.LeaveVirtualization();
 
 		Info = 0;
 		break;
