@@ -10,25 +10,33 @@ UINT32 DumpSyscaallIndex(LPCVOID addr)
 
     SIZE_T index = 0;
 
-    while (true)
+    __try
     {
-        if (code[index] == 0xC3 && code[index + 1] == 0xCC)
-            break;
 
-        if (code[index] == 0xCC && code[index + 1] == 0xCC)
-            break;
-
-        if (code[index] == 0x0F && code[index + 1] == 0x05 && code[index + 2] == 0xC3)
+        while (true)
         {
-            do
-            {
-                if (code[index] == 0xB8)
-                    result = *((UINT32*)(code + index + 1));
-            } while (--index);
-            break;
-        }
+            if (code[index] == 0xC3 && code[index + 1] == 0xCC)
+                break;
 
-        ++index;
+            if (code[index] == 0xCC && code[index + 1] == 0xCC)
+                break;
+
+            if (code[index] == 0x0F && code[index + 1] == 0x05 && code[index + 2] == 0xC3)
+            {
+                do
+                {
+                    if (code[index] == 0xB8)
+                        result = *((UINT32*)(code + index + 1));
+                } while (--index);
+                break;
+            }
+
+            ++index;
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+
     }
 
     return result;
@@ -65,10 +73,11 @@ std::vector<SyscallIdx> ReadSyscall()
         const char* fnName = (const char*)((BYTE*)hMod + names[i]);
         FARPROC addr = GetProcAddress(hMod, fnName);
         if (addr != NULL) {
-            UINT32 index = DumpSyscaallIndex(addr);
+            UINT32 index = -1;
+            index = DumpSyscaallIndex(addr);
             if (index != -1)
             {
-                SyscallIdx item = { fnName, index};
+                SyscallIdx item = { fnName, index };
                 result.push_back(item);
             }
         }
