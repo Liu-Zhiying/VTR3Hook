@@ -391,17 +391,17 @@ public:
 #pragma code_seg("PAGE")
 	static void UnhookSSDT(GlobalManager* pGlobalManager)
 	{
-		pGlobalManager->nptHookManager.RemoveHook(NtCreateProcessHandler);
-		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
+		pGlobalManager->nptHookManager.RemoveHook(pOldNtCreateProcess);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(pOldNtCreateProcess);
 
-		pGlobalManager->nptHookManager.RemoveHook(NtCreateFileHandler);
-		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
+		pGlobalManager->nptHookManager.RemoveHook(pOldNtCreateFile);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(pOldNtCreateFile);
 
-		pGlobalManager->nptHookManager.RemoveHook(NtQuerySystemInformationHandler);
-		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtQuerySystemInformationHandler);
+		pGlobalManager->nptHookManager.RemoveHook(pOldNtQuerySystemInformation);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(pOldNtQuerySystemInformation);
 
-		pGlobalManager->nptHookManager.RemoveHook(NtSystemDebugControlHandler);
-		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtSystemDebugControlHandler);
+		pGlobalManager->nptHookManager.RemoveHook(pOldNtSystemDebugControl);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(pOldNtSystemDebugControl);
 	}
 };
 

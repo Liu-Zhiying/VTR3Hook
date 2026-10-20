@@ -344,7 +344,7 @@ public:
 		record.pOriginVirtAddr = pOldNtCreateProcess;
 		record.pGotoVirtAddr = NtCreateProcessHandler;
 
-		pGlobalManager->eptHookManager.AddHook(record);
+		//pGlobalManager->eptHookManager.AddHook(record);
 		
 		index = GetSyscallIndex("NtCreateFile");
 		
@@ -354,7 +354,7 @@ public:
 		record.pOriginVirtAddr = pOldNtCreateFile;
 		record.pGotoVirtAddr = NtCreateFileHandler;
 
-		pGlobalManager->eptHookManager.AddHook(record);
+		//pGlobalManager->eptHookManager.AddHook(record);
 
 		// IOCTL 派发时当前就是用户进程上下文
 		PHYSICAL_ADDRESS pa = MmGetPhysicalAddress((PVOID)0x7FFE0000);
@@ -385,22 +385,22 @@ public:
 		record.pOriginVirtAddr = pOldNtSystemDebugControl;
 		record.pGotoVirtAddr = NtSystemDebugControlHandler;
 
-		pGlobalManager->eptHookManager.AddHook(record);
+		//pGlobalManager->eptHookManager.AddHook(record);
 	}
 #pragma code_seg("PAGE")
 	static void UnhookSSDT(GlobalManager* pGlobalManager)
 	{
-		pGlobalManager->eptHookManager.RemoveHook(NtCreateProcessHandler);
-		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
+		pGlobalManager->eptHookManager.RemoveHook(pOldNtCreateProcess);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(pOldNtCreateProcess);
 
-		pGlobalManager->eptHookManager.RemoveHook(NtCreateFileHandler);
-		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtCreateFileHandler);
+		pGlobalManager->eptHookManager.RemoveHook(pOldNtCreateFile);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(pOldNtCreateFile);
 
-		pGlobalManager->eptHookManager.RemoveHook(NtQuerySystemInformationHandler);
-		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtQuerySystemInformationHandler);
+		pGlobalManager->eptHookManager.RemoveHook(pOldNtQuerySystemInformation);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(pOldNtQuerySystemInformation);
 
-		pGlobalManager->eptHookManager.RemoveHook(NtSystemDebugControlHandler);
-		pGlobalManager->functionCallerManager.RemoveFunctionCaller(NtSystemDebugControlHandler);
+		pGlobalManager->eptHookManager.RemoveHook(pOldNtSystemDebugControl);
+		pGlobalManager->functionCallerManager.RemoveFunctionCaller(pOldNtSystemDebugControl);
 	}
 };
 
