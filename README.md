@@ -10,4 +10,4 @@ Intel VTX 驱动，从 [StartVTXHookDriverFromNone](https://github.com/Liu-Zhiyi
 ## VTR3HookLib
 驱动的用户态接口
 # 如何提取SDK
-头文件 VTR3HookLib/vtr3hooklib.h lib vtr3hooklib.lib 目前都是hook当前进程，需要远程hook自己改
+头文件 VTR3HookLib/vtr3hooklib.h lib vtr3hooklib.lib 支持HOOK本自己进程和远程进程HOOK

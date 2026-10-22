@@ -294,18 +294,16 @@ void StopVMAndUnHook()
 		printf("停止虚拟化和解除HOOK失败！\n");
 }
 
-void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
+void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr, UINT64 processId)
 {
 	if (IsIntelCPU() && !IntelCpuIsInVirtualization()) return;
 	if (IsAMDCPU() && !AMDCpuIsInVirtualization()) return;
 	if (IsIntelCPU())
 	{
 		EptProcessHookRecordIn record = {};
+		record.processId = processId;
 		record.pOriginVirtAddr = pOriginAddr;
 		record.pGotoVirtAddr = pGotoAddr;
-
-		VirtualLock(pOriginAddr, 1);
-		VirtualLock(pGotoAddr, 1);
 
 		if (!DeviceIoControl(hDevice, IOCTL_ADD_HOOK, &record, sizeof record, NULL, 0, NULL, NULL))
 		{
@@ -316,13 +314,9 @@ void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 	else if (IsAMDCPU())
 	{
 		NptProcessHookRecordIn record = {};
+		record.processId = processId;
 		record.pOriginVirtAddr = pOriginAddr;
 		record.pGotoVirtAddr = pGotoAddr;
-
-		if (!VirtualLock(pOriginAddr, 1))
-			printf("页面锁定失败！\n");
-		if (!VirtualLock(pGotoAddr, 1))
-			printf("页面锁定失败！\n");
 
 		if (!DeviceIoControl(hDevice, IOCTL_ADD_HOOK, &record, sizeof record, NULL, 0, NULL, NULL))
 		{
@@ -336,7 +330,7 @@ void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 	}
 }
 
-void UnhookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
+void UnhookFunction(PVOID pOriginAddr, PVOID pGotoAddr, UINT64 processId)
 {
 	if (IsIntelCPU() && !IntelCpuIsInVirtualization()) return;
 	if (IsAMDCPU() && !AMDCpuIsInVirtualization()) return;
@@ -345,10 +339,34 @@ void UnhookFunction(PVOID pOriginAddr, PVOID pGotoAddr)
 		printf("页面解锁失败！\n");
 	if (!VirtualUnlock(pGotoAddr, 1))
 		printf("页面解锁失败！\n");
-
-	if (!DeviceIoControl(hDevice, IOCTL_REMOVE_HOOK, &pOriginAddr, sizeof pOriginAddr, NULL, 0, NULL, NULL))
+	if (IsIntelCPU())
 	{
-		printf("HOOK 进程内存 失败！\n");
+		EptProcessHookRecordIn record = {};
+		record.processId = processId;
+		record.pOriginVirtAddr = pOriginAddr;
+		record.pGotoVirtAddr = pGotoAddr;
+
+		if (!DeviceIoControl(hDevice, IOCTL_REMOVE_HOOK, &record, sizeof record, NULL, 0, NULL, NULL))
+		{
+			printf("HOOK 进程内存 失败！\n");
+			return;
+		}
+	}
+	else if (IsAMDCPU())
+	{
+		NptProcessHookRecordIn record = {};
+		record.processId = processId;
+		record.pOriginVirtAddr = pOriginAddr;
+		record.pGotoVirtAddr = pGotoAddr;
+
+		if (!DeviceIoControl(hDevice, IOCTL_REMOVE_HOOK, &record, sizeof record, NULL, 0, NULL, NULL))
+		{
+			printf("HOOK 进程内存 失败！\n");
+			return;
+		}
+	}
+	else
+	{
 		return;
 	}
 }

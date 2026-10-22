@@ -1,5 +1,15 @@
 #include "main.h"
 
+extern "C"
+_Must_inspect_result_
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
+NTSTATUS
+PsLookupProcessByProcessId(
+	_In_ HANDLE ProcessId,
+	_Outptr_ PEPROCESS* Process
+);
+
 #pragma data_seg()
 VOID* pNtosKrnlBase = NULL;
 VOID* pKeServiceDescriptorTable = NULL;
@@ -103,7 +113,21 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 		{
 			EptProcessHookRecordIn* pInfo = (EptProcessHookRecordIn*)Irp->AssociatedIrp.SystemBuffer;
 
-			pGlobalManager->eptHookManager.AddProcessHook((EptProcessHookRecord&)*pInfo, PsGetCurrentProcess());
+			EptProcessHookRecord record = {};
+
+			record.pOriginVirtAddr = pInfo->pOriginVirtAddr;
+			record.pGotoVirtAddr = pInfo->pGotoVirtAddr;
+
+			PEPROCESS pProcess = NULL;
+
+			PsLookupProcessByProcessId((HANDLE)pInfo->processId, &pProcess);
+
+			if (pProcess == NULL)
+				return STATUS_UNSUCCESSFUL;
+
+			pGlobalManager->eptHookManager.AddProcessHook(record, pProcess);
+
+			ObDereferenceObject(pProcess);
 
 			Info = inLen;
 		}
@@ -114,11 +138,20 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 		ULONG inLen = IrpSp->Parameters.DeviceIoControl.InputBufferLength;   // ÊäÈë
 		//ULONG outLen = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;  // Êä³ö
 
-		if (inLen == sizeof(PVOID))
+		if (inLen == sizeof(EptProcessHookRecordIn))
 		{
-			PVOID* pInfo = (PVOID*)Irp->AssociatedIrp.SystemBuffer;
+			EptProcessHookRecordIn* pInfo = (EptProcessHookRecordIn*)Irp->AssociatedIrp.SystemBuffer;
 
-			pGlobalManager->eptHookManager.RemoveProcessHook(*pInfo, pGlobalManager->eptHookManager.GetProcessCr3(PsGetCurrentProcess()));
+			PEPROCESS pProcess = NULL;
+
+			PsLookupProcessByProcessId((HANDLE)pInfo->processId, &pProcess);
+
+			if (pProcess == NULL)
+				return STATUS_UNSUCCESSFUL;
+
+			pGlobalManager->eptHookManager.RemoveProcessHook(pInfo->pOriginVirtAddr, pGlobalManager->eptHookManager.GetProcessCr3(pProcess));
+
+			ObDereferenceObject(pProcess);
 
 			Info = inLen;
 		}

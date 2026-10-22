@@ -9,8 +9,8 @@ void DeinitHookDriver();
 void StartVMAndHook();
 void StopVMAndUnHook();
 
-void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr);
-void UnhookFunction(PVOID pOriginAddr, PVOID pGotoAddr);
+void HookFunction(PVOID pOriginAddr, PVOID pGotoAddr, UINT64 processId = GetCurrentProcessId());
+void UnhookFunction(PVOID pOriginAddr, PVOID pGotoAddr, UINT64 processId = GetCurrentProcessId());
 
 #endif // !
 

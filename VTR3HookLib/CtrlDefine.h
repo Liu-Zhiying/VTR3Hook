@@ -51,20 +51,20 @@ typedef struct _SyscallIndex {
 
 struct EptProcessHookRecordIn
 {
-    PTR_TYPE processCr3;
+    PTR_TYPE processId;
     PVOID pOriginVirtAddr;
     PVOID pGotoVirtAddr;
 #pragma code_seg()
-    EptProcessHookRecordIn() : pOriginVirtAddr(NULL), processCr3(0), pGotoVirtAddr(NULL) {}
+    EptProcessHookRecordIn() : pOriginVirtAddr(NULL), processId(0), pGotoVirtAddr(NULL) {}
 };
 
 struct NptProcessHookRecordIn
 {
-    PTR_TYPE processCr3;
+    PTR_TYPE processId;
     PVOID pOriginVirtAddr;
     PVOID pGotoVirtAddr;
 #pragma code_seg()
-    NptProcessHookRecordIn() : pOriginVirtAddr(NULL), processCr3(0), pGotoVirtAddr(NULL) {}
+    NptProcessHookRecordIn() : pOriginVirtAddr(NULL), processId(0), pGotoVirtAddr(NULL) {}
 };
 
 #endif
