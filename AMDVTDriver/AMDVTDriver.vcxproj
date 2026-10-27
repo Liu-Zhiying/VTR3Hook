@@ -116,6 +116,7 @@
     <ClInclude Include="SSDT.h" />
     <ClInclude Include="SVM.h" />
     <ClInclude Include="UnpublicAPI.h" />
+    <ClInclude Include="VirtualMemoryHelper.h" />
     <ClInclude Include="Vmcb.h" />
   </ItemGroup>
   <ItemGroup>
@@ -127,6 +128,7 @@
     <ClCompile Include="PageTable.cpp" />
     <ClCompile Include="SSDT.cpp" />
     <ClCompile Include="SVM.cpp" />
+    <ClCompile Include="VirtualMemoryHelper.cpp" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="common_asm.asm" />

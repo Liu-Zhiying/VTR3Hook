@@ -1,56 +1,6 @@
 #include "Hook.h"
 #include <intrin.h>
 
-#pragma warning(disable : 4201)
-
-typedef struct _KAPC_STATE {
-	LIST_ENTRY ApcListHead[MaximumMode];
-	struct _KPROCESS* Process;
-	union {
-		UCHAR InProgressFlags;
-		struct {
-			BOOLEAN KernelApcInProgress : 1;
-			BOOLEAN SpecialApcInProgress : 1;
-		};
-	};
-
-	BOOLEAN KernelApcPending;
-	union {
-		BOOLEAN UserApcPendingAll;
-		struct {
-			BOOLEAN SpecialUserApcPending : 1;
-			BOOLEAN UserApcPending : 1;
-		};
-	};
-} KAPC_STATE, * PKAPC_STATE, * PRKAPC_STATE;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#if (NTDDI_VERSION >= NTDDI_WIN2K)
-	_IRQL_requires_max_(APC_LEVEL)
-		NTKERNELAPI
-		VOID
-		KeStackAttachProcess(
-			_Inout_ PRKPROCESS PROCESS,
-			_Out_ PRKAPC_STATE ApcState
-		);
-#endif
-
-#if (NTDDI_VERSION >= NTDDI_WIN2K)
-	_IRQL_requires_max_(APC_LEVEL)
-		NTKERNELAPI
-		VOID
-		KeUnstackDetachProcess(
-			_In_ PRKAPC_STATE ApcState
-		);
-#endif
-
-#ifdef __cplusplus
-}
-#endif
-
 extern "C" PTR_TYPE LStarHookCallback;
 extern "C" PTR_TYPE OldLStarEntry;
 extern "C" PTR_TYPE LStarHookCallbackParam1;

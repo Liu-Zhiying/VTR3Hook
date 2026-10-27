@@ -1,4 +1,5 @@
 #include "main.h"
+#include "VirtualMemoryHelper.h"
 
 extern "C"
 _Must_inspect_result_
@@ -119,11 +120,33 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 			record.pGotoVirtAddr = pInfo->pGotoVirtAddr;
 
 			PEPROCESS pProcess = NULL;
-
+			
 			PsLookupProcessByProcessId((HANDLE)pInfo->processId, &pProcess);
 
 			if (pProcess == NULL)
-				return STATUS_UNSUCCESSFUL;
+			{
+				Status = STATUS_UNSUCCESSFUL;
+				break;
+			}
+
+			//触发写时复制
+
+			Status = TouchReadonlyCowPage(record.pOriginVirtAddr, pProcess);
+
+			if (!NT_SUCCESS(Status))
+				break;
+
+			//锁定页面
+
+			Status = LockVirtualMemory(pInfo->pOriginVirtAddr, pProcess);
+
+			if (!NT_SUCCESS(Status))
+				break;
+
+			Status = LockVirtualMemory(pInfo->pGotoVirtAddr, pProcess);
+
+			if (!NT_SUCCESS(Status))
+				break;
 
 			pGlobalManager->eptHookManager.AddProcessHook(record, pProcess);
 
@@ -147,7 +170,14 @@ NTSTATUS DriverControlHandler(IN PDEVICE_OBJECT,
 			PsLookupProcessByProcessId((HANDLE)pInfo->processId, &pProcess);
 
 			if (pProcess == NULL)
-				return STATUS_UNSUCCESSFUL;
+			{
+				Status = STATUS_UNSUCCESSFUL;
+				break;
+			}
+
+			UnlockVirtualMemory(pInfo->pOriginVirtAddr, pProcess);
+
+			UnlockVirtualMemory(pInfo->pGotoVirtAddr, pProcess);
 
 			pGlobalManager->eptHookManager.RemoveProcessHook(pInfo->pOriginVirtAddr, pGlobalManager->eptHookManager.GetProcessCr3(pProcess));
 
@@ -313,7 +343,7 @@ void HookFunctionManager::SetSyscallIndex(char* pFunctionName, UINT32 index)
 }
 
 #pragma code_seg("PAGE")
-UINT32 HookFunctionManager::GetSyscallIndex(char* pFunctionName)
+UINT32 HookFunctionManager::GetSyscallIndex(const char* pFunctionName)
 {
 	KernelVector<SyscallIndexIn, MAIN_TAG, NonPaged>* pContainer = (KernelVector<SyscallIndexIn, MAIN_TAG, NonPaged>*)buffer;
 	for (SIZE_TYPE idx = 0; idx < pContainer->Length(); ++idx)

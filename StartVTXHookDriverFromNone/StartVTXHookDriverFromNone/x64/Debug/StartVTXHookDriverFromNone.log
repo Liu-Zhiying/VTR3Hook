@@ -1,8 +1,0 @@
-﻿  Building 'StartVTXHookDriverFromNone' with toolset 'WindowsKernelModeDriver10.0' and the 'Desktop' target platform.
-  VTX.cpp
-  StartVTXHookDriverFromNone.vcxproj -> D:\Data\CppCode\StartVTXHookDriverFromNone\x64\Debug\StartVTXHookDriverFromNone.sys
-  Done Adding Additional Store
-  Successfully signed: D:\Data\CppCode\StartVTXHookDriverFromNone\x64\Debug\StartVTXHookDriverFromNone.sys
-  
-  Inf2Cat task was skipped as there were no inf files to process
-  

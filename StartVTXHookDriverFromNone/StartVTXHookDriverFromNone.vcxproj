@@ -117,6 +117,7 @@
     <ClInclude Include="main.h" />
     <ClInclude Include="PageTable.h" />
     <ClInclude Include="SSDT.h" />
+    <ClInclude Include="VirtualMemoryHelper.h" />
     <ClInclude Include="VMCS.h" />
     <ClInclude Include="VTX.h" />
   </ItemGroup>
@@ -127,6 +128,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="PageTable.cpp" />
     <ClCompile Include="SSDT.cpp" />
+    <ClCompile Include="VirtualMemoryHelper.cpp" />
     <ClCompile Include="VTX.cpp" />
     <ClCompile Include="common.cpp" />
   </ItemGroup>

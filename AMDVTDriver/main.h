@@ -158,6 +158,12 @@ public:
 		_Inout_ PVOID* BaseAddress,       // 区域基址，按页向下对齐
 		_Inout_ PSIZE_T RegionSize,       // 大小，会被向上取整到页边界
 		_In_ ULONG MapType);              // MAP_PROCESS(1) 或 MAP_SYSTEM(2)
+	typedef NTSTATUS(NTAPI* PNtProtectVirtualMemory)(
+		_In_ HANDLE ProcessHandle,        // 目标进程，NtCurrentProcess()
+		_Inout_ PVOID* BaseAddress,       // 区域基址，按页向下对齐
+		_Inout_ PSIZE_T RegionSize,       // 大小，会被向上取整到页边界
+		_In_ ULONG NewProtect,            // 新的保护属性
+		_Out_ PULONG OldProtect);         // 返回旧的保护属性
 private:
 	inline static PNtCreateProcess pOldNtCreateProcess = NULL;
 	inline static PNtCreateProcess pNtCreateProcessCaller = NULL;
@@ -404,5 +410,7 @@ public:
 		pGlobalManager->functionCallerManager.RemoveFunctionCaller(pOldNtSystemDebugControl);
 	}
 };
+
+extern VOID* pKeServiceDescriptorTable;
 
 #endif
