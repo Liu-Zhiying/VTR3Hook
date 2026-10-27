@@ -42,6 +42,8 @@ typedef struct _KernelRvaInfo {
     void* ZwCreateFileRVA;
     void* KeServiceDescriptorTableRVA;
     void* DirectoryTableBaseRVA;
+    //这个字段是LzyDebugger使用的，这个项目不使用，为了测试LzyDebugger工程驱动的相同功能而保留
+    void* MmCopyVirtualMemoryRVA;
 } KernelRvaInfo, * PKernelRvaInfo;
 
 typedef struct _SyscallIndex {
