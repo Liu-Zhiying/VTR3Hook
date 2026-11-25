@@ -8,7 +8,7 @@ PVOID GetSubFunctionInSSDTByIndex(PVOID pSSDT, UINT32 index)
     ULONG Count = ssdt->NumberOfServices;          // 表长度
     PULONG_PTR Table = ssdt->ServiceTableBase;     // 表基址
 
-    if (Count < index)
+    if (Count <= index)
         return NULL;
 
     ULONG Raw = ((PULONG)Table)[index];
