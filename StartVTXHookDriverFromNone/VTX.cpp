@@ -736,10 +736,9 @@ VTXStatus VTXManager::CheckVTX()
 	return (VTXStatus)result;
 }
 
-#pragma code_seg("PAGE")
+#pragma code_seg()
 VMX_FEATURES VTXManager::CheckFeatures()
 {
-	PAGED_CODE();
 	VMX_FEATURES result = {};
 
 	IA32_VTX_BASIC_MSR basic = { 0 };

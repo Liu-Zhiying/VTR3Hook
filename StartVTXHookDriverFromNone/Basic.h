@@ -166,7 +166,7 @@ constexpr UINT32 IA32_MSR_VTX_TRUE_PINBASED_CTLS = 0x0000048D;
 constexpr UINT32 IA32_MSR_VTX_TRUE_PROCBASED_CTLS = 0x0000048E;
 constexpr UINT32 IA32_MSR_VTX_TRUE_EXIT_CTLS = 0x0000048F;
 constexpr UINT32 IA32_MSR_VTX_TRUE_ENTRY_CTLS = 0x00000490;
-constexpr UINT32 IA32_MSR_VTX_VMFUNC = 0x00000049;
+constexpr UINT32 IA32_MSR_VTX_VMFUNC = 0x00000491;
 constexpr UINT32 IA32_MSR_DBGCTRL = 0x000001D9;
 constexpr UINT32 IA32_MSR_MTRR_CAPABILITIES = 0x000000FE;
 constexpr UINT32 IA32_MSR_MTRR_DEF_TYPE = 0x000002FF;
@@ -238,7 +238,7 @@ inline KernelVector<ElementType, allocTag, memType>::KernelVector() : pData(NULL
 		pMemAlloc = AllocPagedMem;
 		pMemFree = FreePagedMem;
 	}
-	else if constexpr (memType = MemType::ContigousMem)
+	else if constexpr (memType == MemType::ContigousMem)
 	{
 		pMemAlloc = AllocContiguousMem;
 		pMemFree = FreeContigousMem;
@@ -261,8 +261,6 @@ inline KernelVector<ElementType, allocTag, memType>::~KernelVector()
 
 		pMemFree(pData, allocTag);
 
-		length = 0;
-		capacity = 0;
 		pData = NULL;
 	}
 }
@@ -405,6 +403,8 @@ inline void KernelVector<ElementType, allocTag, memType>::Remove(SIZE_TYPE idx)
 		KeBugCheck(MEMORY_MANAGEMENT);
 	}
 
+	CallDestroyer(&pData[idx]);
+
 	for (SIZE_TYPE idx2 = idx; idx2 < Length() - 1; ++idx2)
 		pData[idx2] = static_cast<ElementType&&>(pData[idx2 + 1]);
 
@@ -439,13 +439,16 @@ inline void KernelVector<ElementType, allocTag, memType>::SetCapacity(SIZE_TYPE 
 		KeBugCheck(MEMORY_MANAGEMENT);
 	}
 
+	for (SIZE_T idx = 0; idx < copyLength; ++idx)
+		CallConstructor(pNewData + idx);
+
 	for (SIZE_TYPE idx = 0; idx < copyLength; ++idx)
 		pNewData[idx] = static_cast<ElementType&&>(pData[idx]);
 
 	if (copyLength < capacity)
 	{
-		for (SIZE_T idx = 0; idx < capacity; ++idx)
-			CallDestroyer(pNewData + idx);
+		for (SIZE_TYPE idx = copyLength; idx < length; ++idx)
+			CallDestroyer(pData + idx);
 	}
 
 	if (pData != NULL)
@@ -478,7 +481,7 @@ _Pragma("code_seg()")																												\
 classname& operator=(classname&&) = default;
 
 //判断是否为内核地址
-constexpr inline bool IsKernelAddress(PVOID address)
+constexpr bool IsKernelAddress(PVOID address)
 {
 	return ((PTR_TYPE)address) & 0xffff000000000000;
 }
@@ -529,18 +532,19 @@ extern "C" {
 		);
 #endif
 
-//@[comment("MVI_tracked")]
-_Must_inspect_result_
-_IRQL_requires_max_(APC_LEVEL)
-NTKERNELAPI
-NTSTATUS
-PsLookupThreadByThreadId(
-	_In_ HANDLE ThreadId,
-	_Outptr_ PETHREAD* Thread
-);
+	//@[comment("MVI_tracked")]
+	_Must_inspect_result_
+		_IRQL_requires_max_(APC_LEVEL)
+		NTKERNELAPI
+		NTSTATUS
+		PsLookupThreadByThreadId(
+			_In_ HANDLE ThreadId,
+			_Outptr_ PETHREAD* Thread
+		);
 
 #ifdef __cplusplus
 }
 #endif
+
 
 #endif // !BASIC_H

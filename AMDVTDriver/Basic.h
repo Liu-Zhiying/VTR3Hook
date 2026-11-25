@@ -215,7 +215,7 @@ inline KernelVector<ElementType, allocTag, memType>::KernelVector() : pData(NULL
 		pMemAlloc = AllocPagedMem;
 		pMemFree = FreePagedMem;
 	}
-	else if constexpr (memType = MemType::ContigousMem)
+	else if constexpr (memType == MemType::ContigousMem)
 	{
 		pMemAlloc = AllocContiguousMem;
 		pMemFree = FreeContigousMem;
@@ -380,6 +380,8 @@ inline void KernelVector<ElementType, allocTag, memType>::Remove(SIZE_TYPE idx)
 		KeBugCheck(MEMORY_MANAGEMENT);
 	}
 
+	CallDestroyer(&pData[idx]);
+
 	for (SIZE_TYPE idx2 = idx; idx2 < Length() - 1; ++idx2)
 		pData[idx2] = static_cast<ElementType&&>(pData[idx2 + 1]);
 
@@ -414,13 +416,16 @@ inline void KernelVector<ElementType, allocTag, memType>::SetCapacity(SIZE_TYPE 
 		KeBugCheck(MEMORY_MANAGEMENT);
 	}
 
+	for (SIZE_T idx = 0; idx < copyLength; ++idx)
+		 CallConstructor(pNewData + idx);
+
 	for (SIZE_TYPE idx = 0; idx < copyLength; ++idx)
 		pNewData[idx] = static_cast<ElementType&&>(pData[idx]);
 
 	if (copyLength < capacity)
 	{
-		for (SIZE_T idx = 0; idx < capacity; ++idx)
-			CallDestroyer(pNewData + idx);
+		for (SIZE_TYPE idx = copyLength; idx < length; ++idx)
+			CallDestroyer(pData + idx);
 	}
 
 	if (pData != NULL)
@@ -503,6 +508,16 @@ extern "C" {
 			_In_ PRKAPC_STATE ApcState
 		);
 #endif
+
+	//@[comment("MVI_tracked")]
+	_Must_inspect_result_
+		_IRQL_requires_max_(APC_LEVEL)
+		NTKERNELAPI
+		NTSTATUS
+		PsLookupThreadByThreadId(
+			_In_ HANDLE ThreadId,
+			_Outptr_ PETHREAD* Thread
+		);
 
 #ifdef __cplusplus
 }

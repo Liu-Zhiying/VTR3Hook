@@ -658,6 +658,11 @@ void SVMManager::VmExitHandler(VirtCpuInfo* pVMMVirtCpuInfo, GenericRegisters* p
 				pVMMVirtCpuInfo->guestVmcb.controlFields.tlbControl = 1;
 				break;
 			}
+			case RECOVER_TLB_SUBFUNCTION:
+			{
+				pVMMVirtCpuInfo->guestVmcb.controlFields.tlbControl = 0;
+				break;
+			}
 			}
 		}
 

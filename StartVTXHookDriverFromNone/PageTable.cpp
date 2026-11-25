@@ -404,7 +404,6 @@ bool PageTableManager::HandleMsrInterceptWrite(VirtCpuInfo* pVirtCpuInfo, Generi
 		(msrNum >= IA32_MSR_MTRR_FIX4K_C0000 && msrNum <= IA32_MSR_MTRR_FIX4K_F8000) ||
 		(msrNum >= IA32_MSR_MTRR_PHYSBASE0 && msrNum <= IA32_MSR_MTRR_PHYSBASE0 + 511))
 	{
-
 		CR0 cr0 = {};
 		__vmx_vmread(GUEST_CR0, &cr0.data);
 
@@ -515,12 +514,12 @@ bool PageTableManager::HandleEptViolation(VirtCpuInfo* pVirtCpuInfo, GenericRegi
 			eptPageTable = (EptPageTable*)corePageTables[pVirtCpuInfo->otherInfo.cpuIdx].FindPageTableByPhyAddr(pa, 2);
 
 			if (eptPageTable != NULL)
-				pEntry = &eptPageTable->entries[pa & 0x1ff];
+				pEntry = &eptPageTable->entries[(pa >> 21) & 0x1ff];
 
 			eptPageTable = (EptPageTable*)corePageTables[pVirtCpuInfo->otherInfo.cpuIdx].FindPageTableByPhyAddr(pa, 1);
 
 			if (eptPageTable != NULL)
-				pEntry = &eptPageTable->entries[pa & 0x1ff];
+				pEntry = &eptPageTable->entries[(pa >> 12) & 0x1ff];
 
 			return pEntry;
 		};
@@ -843,6 +842,7 @@ NTSTATUS CoreEptPageTableManager::ChangePageTableEntryPermession(PTR_TYPE guestP
 	//先构造修改后的页表项的数据，再整体拷贝到页表项中，这样会快一些
 	entry.fields.pageFrameNumber = pTargetEntry->fields.pageFrameNumber;
 	entry.fields.largePage = pTargetEntry->fields.largePage;
+	entry.fields.memoryType = pTargetEntry->fields.memoryType;
 
 	*pTargetEntry = entry;
 

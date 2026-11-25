@@ -332,7 +332,6 @@ NTSTATUS EptHookManager::AddHookInSignleCore(const EptHookRecord& record, UINT32
 	SIZE_TYPE hookIdx = INVALID_INDEX;
 	UINT8* swapPageVirtAddr = NULL;
 	PTR_TYPE swapPagePhyAddr = INVALID_ADDR;
-	bool needChangePagePermission = false;
 	bool newSwapCntRef = false;
 
 	CoreEptPageTableManager& corePageTableManager1 = pageTableManager1.GetCoreEptPageTables()[idx];
@@ -471,11 +470,10 @@ NTSTATUS EptHookManager::AddHookInSignleCore(const EptHookRecord& record, UINT32
 			if (!NT_SUCCESS(status))
 				break;
 
-			needChangePagePermission = true;
-
 			SmallPageRecord newItem = {};
 
 			newItem.level3PhyAddr = pOriginPhyAddr & 0xFFFFFFFFFFE00000;
+			newItem.refCnt = 1;
 
 			hookData[idx].smallPageRecord.PushBack(newItem);
 		}
@@ -495,10 +493,7 @@ NTSTATUS EptHookManager::AddHookInSignleCore(const EptHookRecord& record, UINT32
 			EptPageTable* pEptTable = (EptPageTable*)corePageTableManager2.FindPageTableByPhyAddr(pOriginPhyAddr, 1);
 			hookData[idx].swapPageRecord[swapPageIdx].pSwapPageEptEntry = &pEptTable->entries[(pOriginPhyAddr >> 12) & 0x1ff];
 		}
-	}
 
-	if (NT_SUCCESS(status) && needChangePagePermission)
-	{
 		EptEntry permission = {};
 
 		//设置页交换
@@ -555,6 +550,9 @@ NTSTATUS EptHookManager::RemoveHookInSignleCore(PVOID pHookOriginVirtAddr, UINT3
 
 			swapPageVirtAddr = (UINT8*)record.pSwapVirtAddr;
 
+			//获取交换页的物理地址
+			swapPagePhyAddr = MmGetPhysicalAddress((PVOID)swapPageVirtAddr).QuadPart;
+
 			//还原HOOK
 			swapPageVirtAddr[(PTR_TYPE)record.pOriginVirtAddr & 0xfff] = *((UINT8*)record.pOriginVirtAddr);
 
@@ -569,9 +567,6 @@ NTSTATUS EptHookManager::RemoveHookInSignleCore(PVOID pHookOriginVirtAddr, UINT3
 				hookData[idx].swapPageRecord.Remove(swapPageIdx);
 			}
 		}
-
-		//获取交换页的物理地址
-		swapPagePhyAddr = MmGetPhysicalAddress((PVOID)swapPageVirtAddr).QuadPart;
 
 		//递减计数，如果计数为0恢复大页并清除记录
 		smallPagIdx = hookData[idx].FindSmallPageLevel2RefCntByPhyAddr(swapPagePhyAddr & 0xFFFFFFFFFFE00000);
@@ -650,7 +645,6 @@ NTSTATUS EptHookManager::AddProcessHookInSignleCore(const EptProcessHookRecord& 
 	UINT8* swapPageVirtAddr = NULL;
 	PTR_TYPE swapPagePhyAddr = INVALID_ADDR;
 	PTR_TYPE cr3 = GetProcessCr3(pProcess);
-	bool needChangePagePermission = false;
 	bool newSwapCntRef = false;
 
 	EptProcessHookRecord recordCopy = record;
@@ -803,11 +797,10 @@ NTSTATUS EptHookManager::AddProcessHookInSignleCore(const EptProcessHookRecord& 
 			if (!NT_SUCCESS(status))
 				break;
 
-			needChangePagePermission = true;
-
 			SmallPageRecord newItem = {};
 
 			newItem.level3PhyAddr = pOriginPhyAddr & 0xFFFFFFFFFFE00000;
+			newItem.refCnt = 1;
 
 			hookData[idx].smallPageRecord.PushBack(newItem);
 		}
@@ -827,10 +820,7 @@ NTSTATUS EptHookManager::AddProcessHookInSignleCore(const EptProcessHookRecord& 
 			EptPageTable* pEptTable = (EptPageTable*)corePageTableManager2.FindPageTableByPhyAddr(pOriginPhyAddr, 1);
 			hookData[idx].swapPageRecord[swapPageIdx].pSwapPageEptEntry = &pEptTable->entries[(pOriginPhyAddr >> 12) & 0x1ff];
 		}
-	}
 
-	if (NT_SUCCESS(status) && needChangePagePermission)
-	{
 		EptEntry permission = {};
 
 		//设置页交换
@@ -887,6 +877,9 @@ NTSTATUS EptHookManager::RemoveProcessHookInSignleCore(PVOID pHookOriginVirtAddr
 
 			swapPageVirtAddr = (UINT8*)record.pSwapVirtAddr;
 
+			//获取交换页的物理地址
+			swapPagePhyAddr = MmGetPhysicalAddress((PVOID)swapPageVirtAddr).QuadPart;
+
 			//还原HOOK
 			swapPageVirtAddr[(PTR_TYPE)record.pOriginVirtAddr & 0xfff] = *((UINT8*)record.pOriginVirtAddr);
 
@@ -901,9 +894,6 @@ NTSTATUS EptHookManager::RemoveProcessHookInSignleCore(PVOID pHookOriginVirtAddr
 				hookData[idx].swapPageRecord.Remove(swapPageIdx);
 			}
 		}
-
-		//获取交换页的物理地址
-		swapPagePhyAddr = MmGetPhysicalAddress((PVOID)swapPageVirtAddr).QuadPart;
 
 		//递减计数，如果计数为0恢复大页并清除记录
 		smallPagIdx = hookData[idx].FindSmallPageLevel2RefCntByPhyAddr(swapPagePhyAddr & 0xFFFFFFFFFFE00000);

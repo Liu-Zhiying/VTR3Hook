@@ -217,12 +217,12 @@ mov [rcx + 170h], rax
 ;mov rdx, [rsp]
 ;mov r8, [rsp + 10h]
 
-;ALLOC_STACK_AND_CALL FillMachineFrame, 28h
+;ALLOC_STACK_AND_CALL FillMachineFrame, 20h
 
 mov rcx, [rsp + 10h]
 mov rdx, [rsp]
 
-ALLOC_STACK_AND_CALL VmExitHandler, 28h
+ALLOC_STACK_AND_CALL VmExitHandler, 20h
 
 mov rax, [rsp]
 RESTORE_REGISTERS rax
@@ -280,13 +280,11 @@ mov [r10 + 168h], ebx
 mov [r10 + 160h], ecx
 mov [r10 + 158h], edx
 pop rax
-cmp eax,eax
+cmp eax,1
 jne return
-mov eax, [r10 + 170h]
-mov ebx, 20h
-not ebx
-and eax, ebx
-mov [r10 + 170h], eax
+mov eax, [r10 + 160h]
+and eax, 0FFFFFFDFh
+mov [r10 + 160h], eax
 return:
 ret
 VmExitHandler_Cpuid_asm Endp
