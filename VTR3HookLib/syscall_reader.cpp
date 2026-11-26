@@ -1,43 +1,64 @@
 #include "syscall_reader.h"
+#include "utils.h"
 #include <Windows.h>
 
+FARPROC GetProcAddressDirect(HMODULE hModule, const char* funcName) {
+    PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)hModule;
+    PIMAGE_NT_HEADERS ntHeaders = (PIMAGE_NT_HEADERS)((BYTE*)hModule + dosHeader->e_lfanew);
+
+    // 获取导出表
+    PIMAGE_EXPORT_DIRECTORY exportDir = (PIMAGE_EXPORT_DIRECTORY)((BYTE*)hModule +
+        ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+
+    DWORD* names = (DWORD*)((BYTE*)hModule + exportDir->AddressOfNames);
+    DWORD* functions = (DWORD*)((BYTE*)hModule + exportDir->AddressOfFunctions);
+    WORD* ordinals = (WORD*)((BYTE*)hModule + exportDir->AddressOfNameOrdinals);
+
+    for (DWORD i = 0; i < exportDir->NumberOfNames; i++) {
+        const char* name = (const char*)((BYTE*)hModule + names[i]);
+        if (_stricmp(name, funcName) == 0) {
+            // 返回 RVA 对应的实际地址
+            return (FARPROC)((BYTE*)hModule + functions[ordinals[i]]);
+        }
+    }
+    return NULL;
+}
+
 // 以十六进制打印机器码
-UINT32 DumpSyscaallIndex(LPCVOID addr)
+UINT32 DumpSyscallIndex(LPCVOID addr)
 {
     const BYTE* code = (const BYTE*)addr;
+    UINT32 result = (UINT32)-1;
 
-    UINT32 result = -1;
-
-    SIZE_T index = 0;
+    SIZE_T i = 0;
 
     __try
     {
-
+        // stub 只有十几条指令，最多看前 32 字节，绝不无界扫描
         while (true)
         {
-            if (code[index] == 0xC3 && code[index + 1] == 0xCC)
+            if (code[i] == 0xC3 || code[i] == 0xCC)      // 已经走出 stub
                 break;
 
-            if (code[index] == 0xCC && code[index + 1] == 0xCC)
-                break;
-
-            if (code[index] == 0x0F && code[index + 1] == 0x05 && code[index + 2] == 0xC3)
+            if (code[i] == 0x0F && code[i + 1] == 0x05)  // syscall
             {
-                do
+                // mov eax, imm32 就在前面几条指令内（标准 stub 正好是 5 字节）
+                for (SIZE_T back = 1; back <= i; ++back)
                 {
-                    if (code[index] == 0xB8)
-                        result = *((UINT32*)(code + index + 1));
-                } while (--index);
+                    if (code[i - back] == 0xB8)
+                    {
+                        UINT32 v = *(const UINT32*)(code + (i - back) + 1);
+                        result = v; 
+                        break;
+                    }
+                }
                 break;
             }
 
-            ++index;
+            ++i;
         }
     }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-
-    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
 
     return result;
 }
@@ -71,10 +92,9 @@ std::vector<SyscallIdx> ReadSyscall()
 
     for (DWORD i = 0; i < count; i++) {
         const char* fnName = (const char*)((BYTE*)hMod + names[i]);
-        FARPROC addr = GetProcAddress(hMod, fnName);
+        FARPROC addr = GetProcAddressDirect(hMod, fnName);
         if (addr != NULL) {
-            UINT32 index = -1;
-            index = DumpSyscaallIndex(addr);
+            UINT32 index = DumpSyscallIndex(addr);
             if (index != -1)
             {
                 SyscallIdx item = { fnName, index };
