@@ -185,6 +185,10 @@ bool NptHookManager::HandleBreakpoint(VirtCpuInfo* pVirtCpuInfo, GenericRegister
 		if (hookIdx != INVALID_INDEX)
 		{
 			pGuestRegisters->rip = (UINT64)data.processHookRecords[hookIdx].pGotoVirtAddr;
+			pVirtCpuInfo->guestVmcb.controlFields.nRip = pGuestRegisters->rip;
+
+			pVirtCpuInfo->guestVmcb.controlFields.eventInj.data = 0;
+
 			result = true;
 		}
 	}
@@ -196,6 +200,10 @@ bool NptHookManager::HandleBreakpoint(VirtCpuInfo* pVirtCpuInfo, GenericRegister
 		if (hookIdx != INVALID_INDEX)
 		{
 			pGuestRegisters->rip = (UINT64)data.hookRecords[hookIdx].pGotoVirtAddr;
+			pVirtCpuInfo->guestVmcb.controlFields.nRip = pGuestRegisters->rip;
+
+			pVirtCpuInfo->guestVmcb.controlFields.eventInj.data = 0;
+
 			result = true;
 		}
 	}
@@ -273,6 +281,8 @@ bool NptHookManager::HandleNpf(VirtCpuInfo* pVirtCpuInfo, GenericRegisters* pGue
 
 						tempPhyAddr = data.swapPageRecord[swapPageIdx].pOriginPhyAddr;
 
+						pVirtCpuInfo->guestVmcb.controlFields.tlbControl = 1;
+
 						internalCorePageTableManager.ChangePageTableEntryPermession(tempPhyAddr, entry, 1);
 					}
 				}
@@ -298,6 +308,8 @@ bool NptHookManager::HandleNpf(VirtCpuInfo* pVirtCpuInfo, GenericRegisters* pGue
 
 					tempPhyAddr = data.swapPageRecord[swapPageIdx].pOriginPhyAddr;
 
+					pVirtCpuInfo->guestVmcb.controlFields.tlbControl = 1;
+
 					internalCorePageTableManager.ChangePageTableEntryPermession(tempPhyAddr, entry, 1);
 				}
 
@@ -321,8 +333,6 @@ bool NptHookManager::HandleNpf(VirtCpuInfo* pVirtCpuInfo, GenericRegisters* pGue
 				hookStatus.pLastActiveHookPageVirtAddr = NULL;
 				hookStatus.premissionStatus = NptHookStatus::PremissionStatus::HookPageNotExecuted;
 			}
-
-			pVirtCpuInfo->guestVmcb.controlFields.tlbControl = 1;
 
 			result = true;
 		}
@@ -515,15 +525,8 @@ NTSTATUS NptHookManager::AddHookInSignleCore(const NptHookRecord& record, UINT32
 
 		corePageTableManager1.ChangePageTableEntryPermession(pOriginPhyAddr, permission, 1);
 
-		{
-			PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
-			SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
-		}
-
-		{
-			PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,RECOVER_TLB_SUBFUNCTION,0 };
-			SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
-		}
+		PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
+		SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
 	}
 
 	return status;
@@ -638,15 +641,8 @@ NTSTATUS NptHookManager::RemoveHookInSignleCore(PVOID pHookOriginVirtAddr, UINT3
 
 	} while (false);
 
-	{
-		PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
-		SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
-	}
-
-	{
-		PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,RECOVER_TLB_SUBFUNCTION,0 };
-		SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
-	}
+	PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
+	SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
 
 	return status;
 }
@@ -849,15 +845,8 @@ NTSTATUS NptHookManager::AddProcessHookInSignleCore(const NptProcessHookRecord& 
 
 		corePageTableManager1.ChangePageTableEntryPermession(pOriginPhyAddr, permission, 1);
 
-		{
-			PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
-			SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
-		}
-
-		{
-			PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,RECOVER_TLB_SUBFUNCTION,0 };
-			SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
-		}
+		PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
+		SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
 	}
 
 	return status;
@@ -971,15 +960,8 @@ NTSTATUS NptHookManager::RemoveProcessHookInSignleCore(PVOID pHookOriginVirtAddr
 
 	} while (false);
 
-	{
-		PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
-		SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
-	}
-
-	{
-		PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,RECOVER_TLB_SUBFUNCTION,0 };
-		SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
-	}
+	PTR_TYPE regs[4] = { GUEST_CALL_VMM_SVMCALL_FUNCTION,0,FLUSH_TLB_SUBFUNCTION,0 };
+	SetRegsThenSVMCallWrapper(&regs[0], &regs[1], &regs[2], &regs[3]);
 
 	return status;
 }
